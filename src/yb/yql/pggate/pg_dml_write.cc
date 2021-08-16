@@ -170,5 +170,10 @@ PgsqlExpressionPB *PgDmlWrite::AllocTargetPB() {
   return write_req_->add_targets();
 }
 
+PgsqlExpressionPB *PgDmlWrite::AllocQualPB() {
+  LOG(FATAL) << "Pure virtual function is being call";
+  return nullptr;
+}
+
 }  // namespace pggate
 }  // namespace yb

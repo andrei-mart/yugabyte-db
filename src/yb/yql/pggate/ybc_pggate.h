@@ -289,6 +289,8 @@ YBCStatus YBCPgBackfillIndex(
 // - INSERT / UPDATE / DELETE ... RETURNING target_expr1, target_expr2, ...
 YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target);
 
+YBCStatus YbPgDmlAppendQual(YBCPgStatement handle, YBCPgExpr qual);
+
 // Binding Columns: Bind column with a value (expression) in a statement.
 // + This API is used to identify the rows you want to operate on. If binding columns are not
 //   there, that means you want to operate on all rows (full scan). You can view this as a

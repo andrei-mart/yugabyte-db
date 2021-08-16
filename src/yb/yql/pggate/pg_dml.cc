@@ -96,6 +96,32 @@ Status PgDml::AppendTargetPB(PgExpr *target) {
   return Status::OK();
 }
 
+Status PgDml::AppendQual(PgExpr *qual) {
+  RETURN_NOT_OK(AppendQualPB(qual));
+
+  return Status::OK();
+}
+
+Status PgDml::AppendQualPB(PgExpr *qual) {
+  // Append to quals_.
+  quals_.push_back(qual);
+
+  // Allocate associated protobuf.
+  PgsqlExpressionPB *expr_pb = AllocQualPB();
+
+  // Prepare expression. Except for constants and place_holders, all other expressions can be
+  // evaluate just one time during prepare.
+  RETURN_NOT_OK(qual->PrepareForRead(this, expr_pb));
+
+  // Link the given expression "attr_value" with the allocated protobuf. Note that except for
+  // constants and place_holders, all other expressions can be setup just one time during prepare.
+  // Example:
+  // - Bind values for a target of SELECT
+  //   SELECT AVG(col + ?) FROM a_table;
+  // expr_binds_[expr_pb] = qual;
+  return Status::OK();
+}
+
 Result<const PgColumn&> PgDml::PrepareColumnForRead(int attr_num, PgsqlExpressionPB *target_pb) {
   // Find column from targeted table.
   PgColumn& col = VERIFY_RESULT(target_.ColumnForAttr(attr_num));

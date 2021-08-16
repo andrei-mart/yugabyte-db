@@ -119,6 +119,10 @@ PgsqlExpressionPB *PgDmlRead::AllocTargetPB() {
   return read_req_->add_targets();
 }
 
+PgsqlExpressionPB *PgDmlRead::AllocQualPB() {
+  return read_req_->mutable_where_expr();
+}
+
 //--------------------------------------------------------------------------------------------------
 // RESULT SET SUPPORT.
 // For now, selected expressions are just a list of column names (ref).

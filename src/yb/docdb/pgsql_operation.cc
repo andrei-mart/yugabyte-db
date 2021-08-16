@@ -925,7 +925,7 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
     scan_schema = &schema;
   }
 
-  VTRACE(1, "Initialized iterator");
+  VLOG(1) << "Initialized iterator";
 
   // Set scan start time.
   bool scan_time_exceeded = false;
@@ -958,7 +958,8 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
     bool is_match = true;
     if (request_.has_where_expr()) {
       QLExprResult match;
-      RETURN_NOT_OK(EvalExpr(request_.where_expr(), row, match.Writer()));
+      VLOG(1) << "Evaluating where expression";
+      RETURN_NOT_OK(EvalExpr(request_.where_expr(), row, match.Writer(), &schema));
       is_match = match.Value().bool_value();
     }
     if (is_match) {

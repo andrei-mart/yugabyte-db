@@ -493,6 +493,34 @@ ybcSetupScanTargets(ForeignScanState *node)
 }
 
 /*
+ * Setup the scan targets (either columns or aggregates).
+ */
+static void
+ybSetupScanQual(ForeignScanState *node)
+{
+	YbFdwExecState *yb_state = (YbFdwExecState *) node->fdw_state;
+	List	   *qual = node->ss.ps.plan->qual;
+	ListCell   *lc;
+
+	MemoryContext oldcontext =
+		MemoryContextSwitchTo(node->ss.ps.ps_ExprContext->ecxt_per_query_memory);
+
+	foreach(lc, qual) {
+		Expr *expr = (Expr *) lfirst(lc);
+		YBCPgExpr yb_expr = YBCNewEvalSingleParamExprCall(yb_state->handle,
+														  expr,
+														  InvalidAttrNumber,
+														  BOOLOID,
+														  -1,
+														  InvalidOid);
+		HandleYBStatus(YbPgDmlAppendQual(yb_state->handle, yb_expr));
+		break;
+	}
+
+	MemoryContextSwitchTo(oldcontext);
+}
+
+/*
  * ybcIterateForeignScan
  *		Read next record from the data file and store it into the
  *		ScanTupleSlot as a virtual tuple
@@ -512,6 +540,7 @@ ybcIterateForeignScan(ForeignScanState *node)
 	 */
 	if (!ybc_state->is_exec_done) {
 		ybcSetupScanTargets(node);
+		ybSetupScanQual(node);
 		HandleYBStatus(YBCPgExecSelect(ybc_state->handle, ybc_state->exec_params));
 		ybc_state->is_exec_done = true;
 	}

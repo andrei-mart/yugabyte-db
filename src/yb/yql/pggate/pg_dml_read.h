@@ -88,6 +88,9 @@ class PgDmlRead : public PgDml {
   // Allocate protobuf for target.
   PgsqlExpressionPB *AllocTargetPB() override;
 
+  // Allocate protobuf for qual.
+  PgsqlExpressionPB *AllocQualPB() override;
+
   // Allocate column expression.
   PgsqlExpressionPB *AllocColumnAssignPB(PgColumn *col) override;
 

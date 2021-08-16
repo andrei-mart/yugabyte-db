@@ -567,6 +567,10 @@ YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target) {
   return ToYBCStatus(pgapi->DmlAppendTarget(handle, target));
 }
 
+YBCStatus YbPgDmlAppendQual(YBCPgStatement handle, YBCPgExpr qual) {
+  return ToYBCStatus(pgapi->DmlAppendQual(handle, qual));
+}
+
 YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value) {
   return ToYBCStatus(pgapi->DmlBindColumn(handle, attr_num, attr_value));
 }

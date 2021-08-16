@@ -37,6 +37,9 @@ class PgDml : public PgStatement {
   // Append a target in SELECT or RETURNING.
   CHECKED_STATUS AppendTarget(PgExpr *target);
 
+  // Append a filter condition.
+  CHECKED_STATUS AppendQual(PgExpr *qual);
+
   // Prepare column for both ends.
   // - Prepare protobuf to communicate with DocDB.
   // - Prepare PgExpr to send data back to Postgres layer.
@@ -95,6 +98,9 @@ class PgDml : public PgStatement {
   // Allocate protobuf for a SELECTed expression.
   virtual PgsqlExpressionPB *AllocTargetPB() = 0;
 
+  // Allocate protobuf for a WHERE expression.
+  virtual PgsqlExpressionPB *AllocQualPB() = 0;
+
   // Allocate protobuf for expression whose value is bounded to a column.
   virtual PgsqlExpressionPB *AllocColumnBindPB(PgColumn *col) = 0;
 
@@ -103,6 +109,9 @@ class PgDml : public PgStatement {
 
   // Specify target of the query in protobuf request.
   CHECKED_STATUS AppendTargetPB(PgExpr *target);
+
+  // Specify qual of the query in protobuf request.
+  CHECKED_STATUS AppendQualPB(PgExpr *qual);
 
   // Update bind values.
   CHECKED_STATUS UpdateBindPBs();
@@ -137,6 +146,9 @@ class PgDml : public PgStatement {
   // - "targets_" are either selected or returned expressions by DML statements.
   PgTable target_;
   std::vector<PgExpr*> targets_;
+
+  // Qual is a where clause condition pushed to the DocDB to filter scanned rows
+  std::vector<PgExpr*> quals_;
 
   // bind_desc_ is the descriptor of the table whose key columns' values will be specified by the
   // the DML statement being executed.

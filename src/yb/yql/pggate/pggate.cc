@@ -886,6 +886,10 @@ Status PgApiImpl::DmlAppendTarget(PgStatement *handle, PgExpr *target) {
   return down_cast<PgDml*>(handle)->AppendTarget(target);
 }
 
+Status PgApiImpl::DmlAppendQual(PgStatement *handle, PgExpr *qual) {
+  return down_cast<PgDml*>(handle)->AppendQual(qual);
+}
+
 Status PgApiImpl::DmlBindColumn(PgStatement *handle, int attr_num, PgExpr *attr_value) {
   return down_cast<PgDml*>(handle)->BindColumn(attr_num, attr_value);
 }
