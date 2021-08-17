@@ -121,10 +121,6 @@ Status DocPgEvalExpr(const std::string& expr_str,
     auto column = schema->column_by_id(col_id);
     SCHECK(column.ok(), InternalError, "Invalid Schema");
 
-    // Loop here is ok as params.size() will always be 1 for user tables,
-    // and 2 for some internal queries (catalog version increment).
-    // TODO Rethink this if we ever allow more params here.
-    DCHECK_LT(params.size(), 3);
     for (int i = 0; i < params.size(); i++) {
       if (column->order() == params[i].attno) {
         const QLValuePB* val = table_row.GetColumn(col_id.rep());

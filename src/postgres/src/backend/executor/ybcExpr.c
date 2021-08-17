@@ -75,6 +75,83 @@ YBCPgExpr YBCNewConstantVirtual(YBCPgStatement ybc_stmt, Oid type_id, YBCPgDatum
 	return expr;
 }
 
+bool YbCanPushdownExpr(Expr *pg_expr,
+					   int *num_params,
+					   YBExprParamDesc **params)
+{
+	switch (pg_expr->type)
+	{
+		case T_FuncExpr:
+		case T_OpExpr:
+		{
+			List         *args = NIL;
+			ListCell     *lc;
+
+			/* Get the (underlying) function info. */
+			if (IsA(pg_expr, FuncExpr))
+			{
+				FuncExpr *func_expr = castNode(FuncExpr, pg_expr);
+				args = func_expr->args;
+			}
+			else if (IsA(pg_expr, OpExpr))
+			{
+				OpExpr *op_expr = castNode(OpExpr, pg_expr);
+				args = op_expr->args;
+			}
+
+			foreach(lc, args)
+			{
+				Expr *arg = (Expr *) lfirst(lc);
+				if (!YbCanPushdownExpr(arg, num_params, params)) {
+					return false;
+				}
+			}
+			return true;
+		}
+		case T_RelabelType:
+		{
+			RelabelType *rt = castNode(RelabelType, pg_expr);
+			return YbCanPushdownExpr(rt->arg, num_params, params);
+		}
+		case T_Const:
+		{
+			return true;
+		}
+		case T_Var:
+		{
+			Var		   *var_expr = castNode(Var, pg_expr);
+			AttrNumber	attno = var_expr->varattno;
+			YBExprParamDesc *param;
+			if (*num_params == 0)
+			{
+				*num_params = 1;
+				*params = param = palloc(sizeof(YBExprParamDesc));
+			}
+			else
+			{
+				for (int i = 0; i < *num_params; i++)
+				{
+					if ((*params)[i].attno == attno)
+					{
+						return true;
+					}
+				}
+				*num_params += 1;
+				*params = repalloc(*params, *num_params * sizeof(YBExprParamDesc));
+				param = *params + *num_params - 1;
+			}
+			param->attno = attno;
+			param->typid = var_expr->vartype;
+			param->typmod = var_expr->vartypmod;
+			return true;
+		}
+		default:
+		{
+			return false;
+		}
+	}
+}
+
 YBCPgExpr YBCNewEvalSingleParamExprCall(YBCPgStatement ybc_stmt,
                                         Expr *pg_expr,
                                         int32_t attno,
@@ -90,7 +167,7 @@ YBCPgExpr YBCNewEvalSingleParamExprCall(YBCPgStatement ybc_stmt,
 }
 
 /*
- * Assuming the first param is the target column, therefore representing both 
+ * Assuming the first param is the target column, therefore representing both
  * the first argument and return type.
  */
 YBCPgExpr YBCNewEvalExprCall(YBCPgStatement ybc_stmt,
@@ -124,7 +201,7 @@ YBCPgExpr YBCNewEvalExprCall(YBCPgStatement ybc_stmt,
 		Datum typid = Int32GetDatum(params[i].typid);
 		YBCPgExpr typid_expr = YBCNewConstant(ybc_stmt, INT4OID, InvalidOid, typid, /* IsNull */ false);
 		YBCPgOperatorAppendArg(ybc_expr, typid_expr);
-		
+
 		Datum typmod = Int32GetDatum(params[i].typmod);
 		YBCPgExpr typmod_expr = YBCNewConstant(ybc_stmt, INT4OID, InvalidOid, typmod, /* IsNull */ false);
 		YBCPgOperatorAppendArg(ybc_expr, typmod_expr);

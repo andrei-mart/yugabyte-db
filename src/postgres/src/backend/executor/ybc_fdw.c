@@ -505,16 +505,29 @@ ybSetupScanQual(ForeignScanState *node)
 	MemoryContext oldcontext =
 		MemoryContextSwitchTo(node->ss.ps.ps_ExprContext->ecxt_per_query_memory);
 
-	foreach(lc, qual) {
+	foreach(lc, qual)
+	{
 		Expr *expr = (Expr *) lfirst(lc);
-		YBCPgExpr yb_expr = YBCNewEvalSingleParamExprCall(yb_state->handle,
-														  expr,
-														  InvalidAttrNumber,
-														  BOOLOID,
-														  -1,
-														  InvalidOid);
-		HandleYBStatus(YbPgDmlAppendQual(yb_state->handle, yb_expr));
-		break;
+		int num_params = 1;
+		YBExprParamDesc *params = palloc(sizeof(YBExprParamDesc));
+		params->attno = InvalidAttrNumber;
+		params->typid = BOOLOID;
+		params->typmod = -1;
+		params->collid = InvalidOid;
+		if (YbCanPushdownExpr(expr, &num_params, &params))
+		{
+			YBCPgExpr yb_expr = YBCNewEvalExprCall(yb_state->handle,
+												   expr,
+												   params,
+												   num_params);
+			HandleYBStatus(YbPgDmlAppendQual(yb_state->handle, yb_expr));
+			pfree(params);
+			break;
+		}
+		else
+		{
+			pfree(params);
+		}
 	}
 
 	MemoryContextSwitchTo(oldcontext);
