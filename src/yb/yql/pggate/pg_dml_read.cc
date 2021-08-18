@@ -120,7 +120,7 @@ PgsqlExpressionPB *PgDmlRead::AllocTargetPB() {
 }
 
 PgsqlExpressionPB *PgDmlRead::AllocQualPB() {
-  return read_req_->mutable_where_expr();
+  return read_req_->add_where_expr();
 }
 
 //--------------------------------------------------------------------------------------------------

@@ -956,11 +956,15 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
 
     // Match the row with the where condition before adding to the row block.
     bool is_match = true;
-    if (request_.has_where_expr()) {
+    for (const PgsqlExpressionPB& expr : request_.where_expr()) {
       QLExprResult match;
       VLOG(1) << "Evaluating where expression";
-      RETURN_NOT_OK(EvalExpr(request_.where_expr(), row, match.Writer(), &schema));
+      RETURN_NOT_OK(EvalExpr(expr, row, match.Writer(), &schema));
       is_match = match.Value().bool_value();
+      if (!is_match) {
+        VLOG(1) << "Where expression is false, skipping row";
+        break;
+      }
     }
     if (is_match) {
       match_count++;

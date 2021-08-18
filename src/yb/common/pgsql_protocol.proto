@@ -331,7 +331,7 @@ message PgsqlReadRequestPB {
   optional PgsqlReadRequestPB index_request = 21;
 
   // Where clause condition
-  optional PgsqlExpressionPB where_expr = 8;
+  repeated PgsqlExpressionPB where_expr = 8;
 
   // TODO(alex): This should be renamed to make it clear that it's ONLY related to range columns!
   // Conditions for range columns.
