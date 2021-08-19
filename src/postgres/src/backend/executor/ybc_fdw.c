@@ -500,7 +500,6 @@ ybSetupScanQual(ForeignScanState *node)
 {
 	YbFdwExecState *yb_state = (YbFdwExecState *) node->fdw_state;
 	List	   *qual = node->ss.ps.plan->qual;
-	List	   *new_qual = NIL;
 	ListCell   *lc;
 
 	MemoryContext oldcontext =
@@ -523,13 +522,8 @@ ybSetupScanQual(ForeignScanState *node)
 												   num_params);
 			HandleYBStatus(YbPgDmlAppendQual(yb_state->handle, yb_expr));
 		}
-		else
-		{
-			lappend(new_qual, expr);
-		}
 		pfree(params);
 	}
-	node->ss.ps.plan->qual = new_qual;
 
 	MemoryContextSwitchTo(oldcontext);
 }

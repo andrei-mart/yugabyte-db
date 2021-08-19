@@ -75,6 +75,50 @@ YBCPgExpr YBCNewConstantVirtual(YBCPgStatement ybc_stmt, Oid type_id, YBCPgDatum
 	return expr;
 }
 
+bool yb_can_pushdown_func(Oid funcid)
+{
+	HeapTuple		tuple;
+	Form_pg_proc	pg_proc;
+
+	if (!is_builtin_func(funcid))
+	{
+		return false;
+	}
+
+	tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "cache lookup failed for function %u", funcid);
+	pg_proc = (Form_pg_proc) GETSTRUCT(tuple);
+	if (pg_proc->provolatile != PROVOLATILE_IMMUTABLE)
+	{
+		ReleaseSysCache(tuple);
+		return false;
+	}
+
+	/*
+	 * Polymorhipc pseduo-types (e.g. anyarray) may require additional
+	 * processing (requiring syscatalog access) to fully resolve to a concrete
+	 * type. Therefore they are not supported by DocDB.
+	 */
+	if (IsPolymorphicType(pg_proc->prorettype))
+	{
+		ReleaseSysCache(tuple);
+		return false;
+	}
+
+	for (int i = 0; i < pg_proc->pronargs; i++)
+	{
+		if (IsPolymorphicType(pg_proc->proargtypes.values[i]))
+		{
+			ReleaseSysCache(tuple);
+			return false;
+		}
+	}
+
+	ReleaseSysCache(tuple);
+	return true;
+}
+
 bool YbCanPushdownExpr(Expr *pg_expr,
 					   int *num_params,
 					   YBExprParamDesc **params)
@@ -84,19 +128,26 @@ bool YbCanPushdownExpr(Expr *pg_expr,
 		case T_FuncExpr:
 		case T_OpExpr:
 		{
-			List         *args = NIL;
-			ListCell     *lc;
+			Oid				funcid;
+			List		   *args = NIL;
+			ListCell	   *lc;
 
 			/* Get the (underlying) function info. */
 			if (IsA(pg_expr, FuncExpr))
 			{
 				FuncExpr *func_expr = castNode(FuncExpr, pg_expr);
+				funcid = func_expr->funcid;
 				args = func_expr->args;
 			}
 			else if (IsA(pg_expr, OpExpr))
 			{
 				OpExpr *op_expr = castNode(OpExpr, pg_expr);
+				funcid = op_expr->opfuncid;
 				args = op_expr->args;
+			}
+
+			if (!yb_can_pushdown_func(funcid)) {
+				return false;
 			}
 
 			foreach(lc, args)

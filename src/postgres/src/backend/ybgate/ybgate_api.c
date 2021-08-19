@@ -18,6 +18,7 @@
 
 #include "ybgate/ybgate_api.h"
 
+#include "catalog/pg_collation_d.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_type_d.h"
 #include "catalog/yb_type.h"
@@ -131,11 +132,11 @@ static Datum evalExpr(YbgExprContext ctx, Expr* expr, bool *is_null)
 
 			fmgr_info(funcid, flinfo);
 			InitFunctionCallInfoData(fcinfo,
-			                         flinfo,
-			                         args->length,
-			                         InvalidOid,
-			                         NULL,
-			                         NULL);
+									 flinfo,
+									 args->length,
+									 DEFAULT_COLLATION_OID,
+									 NULL,
+									 NULL);
 			int i = 0;
 			foreach(lc, args)
 			{
@@ -267,7 +268,7 @@ struct YbgReservoirStateData {
 	ReservoirStateData rs;
 };
 
-YbgStatus YbgSamplerCreate(double rstate_w, uint64_t randstate, YbgReservoirState *yb_rs) 
+YbgStatus YbgSamplerCreate(double rstate_w, uint64_t randstate, YbgReservoirState *yb_rs)
 {
 	PG_SETUP_ERROR_REPORTING();
 	YbgReservoirState rstate = (YbgReservoirState) palloc0(sizeof(struct YbgReservoirStateData));
