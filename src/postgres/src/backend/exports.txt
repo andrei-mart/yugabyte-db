@@ -12,6 +12,7 @@ YbgGetTypeTable
 # Expression Evaluation API
 YbgExprContextCreate
 YbgExprContextAddColValue
+YbgPrepareExpr
 YbgEvalExpr
 YbgSplitArrayDatum
 

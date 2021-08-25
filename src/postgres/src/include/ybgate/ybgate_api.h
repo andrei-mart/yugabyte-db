@@ -108,8 +108,10 @@ YbgStatus YbgGetTypeTable(const YBCPgTypeEntity **type_table, int *count);
 
 #ifdef __cplusplus
 typedef void* YbgExprContext;
+typedef void* YbgPreparedExpr;
 #else
 typedef struct YbgExprContextData* YbgExprContext;
+typedef struct Expr* YbgPreparedExpr;
 #endif
 
 /*
@@ -123,11 +125,13 @@ YbgStatus YbgExprContextCreate(int32_t min_attno, int32_t max_attno, YbgExprCont
  */
 YbgStatus YbgExprContextAddColValue(YbgExprContext expr_ctx, int32_t attno, uint64_t datum, bool is_null);
 
+YbgStatus YbgPrepareExpr(char* expr_cstring, YbgPreparedExpr *expr);
+
 /*
  * Evaluate an expression, using the expression context to resolve scan variables.
  * Will filling in datum and is_null with the result.
  */
-YbgStatus YbgEvalExpr(char* expr_cstring, YbgExprContext expr_ctx, uint64_t *datum, bool *is_null);
+YbgStatus YbgEvalExpr(YbgPreparedExpr expr, YbgExprContext expr_ctx, uint64_t *datum, bool *is_null);
 
 /*
  * Given a 'datum' of array type, split datum into individual elements of type 'type' and store

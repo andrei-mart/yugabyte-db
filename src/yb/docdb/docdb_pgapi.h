@@ -48,16 +48,36 @@ struct DocPgParamDesc {
     {}
 };
 
+struct DocPgVarRef {
+  ColumnIdRep var_colid;
+  const YBCPgTypeEntity *var_type;
+  YBCPgTypeAttrs var_type_attrs;
+
+  DocPgVarRef(ColumnIdRep var_colid, const YBCPgTypeEntity *var_type, int32_t var_typmod)
+    : var_colid(var_colid), var_type(var_type), var_type_attrs({var_typmod})
+  {}
+};
+
 const YBCPgTypeEntity* DocPgGetTypeEntity(YbgTypeDesc pg_type);
 
 //-----------------------------------------------------------------------------
 // Expressions/Values
 //-----------------------------------------------------------------------------
 
-Status DocPgEvalExpr(const std::string& expr_str,
-                     std::vector<DocPgParamDesc> params,
-                     const QLTableRow& table_row,
-                     const Schema *schema,
+Status DocPgPrepareExpr(const std::string& expr_str,
+                        std::vector<DocPgParamDesc> params,
+                        const Schema *schema,
+                        std::map<int, const DocPgVarRef>& var_map,
+                        YbgPreparedExpr *expr,
+                        DocPgVarRef *ret_type);
+
+Status DocPgPrepareExprCtx(const QLTableRow& table_row,
+                           std::map<int, const DocPgVarRef>& var_map,
+                           YbgExprContext *expr_ctx);
+
+Status DocPgEvalExpr(YbgPreparedExpr expr,
+                     YbgExprContext expr_ctx,
+                     const DocPgVarRef& res_type,
                      QLValue* result);
 
 // Given a 'ql_value' with a binary value, interpret the binary value as a text

@@ -219,10 +219,16 @@ YbgStatus YbgExprContextAddColValue(YbgExprContext expr_ctx,
 	return PG_STATUS_OK;
 }
 
-YbgStatus YbgEvalExpr(char* expr_cstring, YbgExprContext expr_ctx, uint64_t *datum, bool *is_null)
+YbgStatus YbgPrepareExpr(char* expr_cstring, YbgPreparedExpr *expr)
 {
 	PG_SETUP_ERROR_REPORTING();
-	Expr *expr = (Expr *) stringToNode(expr_cstring);
+	*expr = (YbgPreparedExpr) stringToNode(expr_cstring);
+	return PG_STATUS_OK;
+}
+
+YbgStatus YbgEvalExpr(YbgPreparedExpr expr, YbgExprContext expr_ctx, uint64_t *datum, bool *is_null)
+{
+	PG_SETUP_ERROR_REPORTING();
 	*datum = (uint64_t) evalExpr(expr_ctx, expr, is_null);
 	return PG_STATUS_OK;
 }
