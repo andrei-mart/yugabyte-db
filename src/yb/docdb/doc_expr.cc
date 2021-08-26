@@ -311,9 +311,12 @@ CHECKED_STATUS DocExprExecutor::EvalTSCall(const PgsqlBCallPB& tscall,
         int32_t typmod = tscall.operands(3*i + 3).value().int32_value();
         params.emplace_back(attno, typid, typmod);
       }
+
+      YbgPrepareMemoryContext();
       RETURN_NOT_OK(DocPgPrepareExpr(expr_str, params, schema, var_map, &expr, &res_type));
       RETURN_NOT_OK(DocPgPrepareExprCtx(table_row, var_map, &expr_ctx));
       RETURN_NOT_OK(DocPgEvalExpr(expr, expr_ctx, res_type, result));
+      YbgResetMemoryContext();
 
       return Status::OK();
     }

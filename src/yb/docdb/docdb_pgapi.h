@@ -77,6 +77,11 @@ Status DocPgPrepareExprCtx(const QLTableRow& table_row,
 
 Status DocPgEvalExpr(YbgPreparedExpr expr,
                      YbgExprContext expr_ctx,
+                     uint64_t *datum,
+                     bool *is_null);
+
+Status DocPgEvalExpr(YbgPreparedExpr expr,
+                     YbgExprContext expr_ctx,
                      const DocPgVarRef& res_type,
                      QLValue* result);
 

@@ -121,9 +121,11 @@ Status DocPgPrepareExpr(const std::string& expr_str,
       }
     }
   }
-  YbgTypeDesc pg_arg_type = {params[0].typid, params[0].typmod};
-  const YBCPgTypeEntity *arg_type = DocPgGetTypeEntity(pg_arg_type);
-  *ret_type = DocPgVarRef(0, arg_type, params[0].typmod);
+  if (ret_type != nullptr) {
+    YbgTypeDesc pg_arg_type = {params[0].typid, params[0].typmod};
+    const YBCPgTypeEntity *arg_type = DocPgGetTypeEntity(pg_arg_type);
+    *ret_type = DocPgVarRef(0, arg_type, params[0].typmod);
+  }
   return Status::OK();
 }
 
@@ -154,12 +156,21 @@ Status DocPgPrepareExprCtx(const QLTableRow& table_row,
 
 Status DocPgEvalExpr(YbgPreparedExpr expr,
                      YbgExprContext expr_ctx,
+                     uint64_t *datum,
+                     bool *is_null) {
+  // Evaluate the expression and get the result.
+  PG_RETURN_NOT_OK(YbgEvalExpr(expr, expr_ctx, datum, is_null));
+  return Status::OK();
+}
+
+Status DocPgEvalExpr(YbgPreparedExpr expr,
+                     YbgExprContext expr_ctx,
                      const DocPgVarRef& res_type,
                      QLValue* result) {
   // Evaluate the expression and get the result.
   bool is_null = false;
   uint64_t datum;
-  PG_RETURN_NOT_OK(YbgEvalExpr(expr, expr_ctx, &datum, &is_null));
+  RETURN_NOT_OK(DocPgEvalExpr(expr, expr_ctx, &datum, &is_null));
   return PgValueToPB(res_type.var_type, datum, is_null, result);
 }
 
