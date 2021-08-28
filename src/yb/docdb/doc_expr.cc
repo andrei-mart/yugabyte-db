@@ -304,6 +304,7 @@ CHECKED_STATUS DocExprExecutor::EvalTSCall(const PgsqlBCallPB& tscall,
       YbgExprContext expr_ctx;
       std::vector<DocPgParamDesc> params;
       int num_params = (tscall.operands_size() - 1) / 3;
+      VLOG(1) << "Expression references " << (num_params - 1) << " parameters";
       params.reserve(num_params);
       for (int i = 0; i < num_params; i++) {
         int32_t attno = tscall.operands(3*i + 1).value().int32_value();
@@ -314,7 +315,9 @@ CHECKED_STATUS DocExprExecutor::EvalTSCall(const PgsqlBCallPB& tscall,
 
       YbgPrepareMemoryContext();
       RETURN_NOT_OK(DocPgPrepareExpr(expr_str, params, schema, var_map, &expr, &res_type));
+      VLOG(1) << "Parameter map size: " << var_map.size();
       RETURN_NOT_OK(DocPgPrepareExprCtx(table_row, var_map, &expr_ctx));
+      VLOG(1) << "Returned expr context " << expr_ctx;
       RETURN_NOT_OK(DocPgEvalExpr(expr, expr_ctx, res_type, result));
       YbgResetMemoryContext();
 

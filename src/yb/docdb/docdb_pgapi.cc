@@ -99,32 +99,45 @@ Status DocPgPrepareExpr(const std::string& expr_str,
                         YbgPreparedExpr *expr,
                         DocPgVarRef *ret_type) {
   char *expr_cstring = const_cast<char *>(expr_str.c_str());
+  VLOG(1) << "Deserialize " << expr_cstring;
   PG_RETURN_NOT_OK(YbgPrepareExpr(expr_cstring, expr));
 
+  VLOG(1) << "Processing expression parameters";
   // Set the column values (used to resolve scan variables in the expression).
   for (const ColumnId& col_id : schema->column_ids()) {
+    bool found = false;
     auto column = schema->column_by_id(col_id);
     SCHECK(column.ok(), InternalError, "Invalid Schema");
-    int attno = column->order();
+    int32_t attno = column->order();
     if (var_map.find(attno) != var_map.end()) {
+      VLOG(1) << "Attribute " << attno << " is already processed";
       continue;
     }
 
-    for (int i = 1; i < params.size(); i++) {
+    for (int i = 0; i < params.size(); i++) {
       if (attno == params[i].attno) {
         YbgTypeDesc pg_arg_type = {params[i].typid, params[i].typmod};
         const YBCPgTypeEntity *arg_type = DocPgGetTypeEntity(pg_arg_type);
         var_map.emplace(std::piecewise_construct,
-                        std::forward_as_tuple(params[i].attno),
+                        std::forward_as_tuple(attno),
                         std::forward_as_tuple(col_id.rep(), arg_type, params[i].typmod));
+        VLOG(1) << "Attribute " << attno << " has been processed";
+        found = true;
         break;
       }
     }
+
+    if (!found) {
+      VLOG(1) << "Attribute " << attno << " is not referenced";
+    }
   }
+  VLOG(1) << "Total attributes referenced: " << var_map.size();
+
   if (ret_type != nullptr) {
     YbgTypeDesc pg_arg_type = {params[0].typid, params[0].typmod};
     const YBCPgTypeEntity *arg_type = DocPgGetTypeEntity(pg_arg_type);
     *ret_type = DocPgVarRef(0, arg_type, params[0].typmod);
+    VLOG(1) << "Processed expression return type";
   }
   return Status::OK();
 }
@@ -139,6 +152,7 @@ Status DocPgPrepareExprCtx(const QLTableRow& table_row,
   int32_t min_attno = var_map.begin()->first;
   int32_t max_attno = var_map.rbegin()->first;
 
+  VLOG(1) << "Allocating expr context: (" << min_attno << ", " << max_attno;
   PG_RETURN_NOT_OK(YbgExprContextCreate(min_attno, max_attno, expr_ctx));
 
   // Set the column values (used to resolve scan variables in the expression).
@@ -149,6 +163,7 @@ Status DocPgPrepareExprCtx(const QLTableRow& table_row,
     bool is_null = false;
     uint64_t datum = 0;
     RETURN_NOT_OK(PgValueFromPB(arg_ref.var_type, arg_ref.var_type_attrs, *val, &datum, &is_null));
+    VLOG(1) << "Adding value for attno " << attno;
     PG_RETURN_NOT_OK(YbgExprContextAddColValue(*expr_ctx, attno, datum, is_null));
   }
   return Status::OK();

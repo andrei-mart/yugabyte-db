@@ -26,6 +26,7 @@
 #include "yb/common/ql_value.h"
 
 #include "yb/docdb/doc_path.h"
+#include "yb/docdb/doc_pg_expr.h"
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_write_batch.h"
@@ -925,6 +926,10 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
     scan_schema = &schema;
   }
 
+  DocPgExprExecutor expr_exec(scan_schema);
+  for (const PgsqlExpressionPB& expr : request_.where_expr()) {
+    RETURN_NOT_OK(expr_exec.AddWhereExpression(expr));
+  }
   VLOG(1) << "Initialized iterator";
 
   // Set scan start time.
@@ -956,16 +961,7 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
 
     // Match the row with the where condition before adding to the row block.
     bool is_match = true;
-    for (const PgsqlExpressionPB& expr : request_.where_expr()) {
-      QLExprResult match;
-      VLOG(1) << "Evaluating where expression";
-      RETURN_NOT_OK(EvalExpr(expr, row, match.Writer(), &schema));
-      is_match = match.Value().bool_value();
-      if (!is_match) {
-        VLOG(1) << "Where expression is false, skipping row";
-        break;
-      }
-    }
+    expr_exec.ExecWhereExpr(row, &is_match);
     if (is_match) {
       match_count++;
       if (request_.is_aggregate()) {

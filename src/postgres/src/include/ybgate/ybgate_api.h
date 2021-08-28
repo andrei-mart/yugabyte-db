@@ -77,6 +77,21 @@ typedef struct YbgStatus YbgStatus;
 // Memory Context
 //-----------------------------------------------------------------------------
 
+#ifdef __cplusplus
+typedef void *YbgMemoryContext;
+#else
+typedef MemoryContext YbgMemoryContext;
+#endif
+
+YbgStatus YbgGetCurrentMemoryContext(YbgMemoryContext *memctx);
+
+YbgStatus YbgSetCurrentMemoryContext(YbgMemoryContext memctx,
+									 YbgMemoryContext *oldctx);
+
+YbgStatus YbgCreateMemoryContext(YbgMemoryContext parent,
+								 const char *name,
+								 YbgMemoryContext *memctx);
+
 YbgStatus YbgPrepareMemoryContext();
 
 YbgStatus YbgResetMemoryContext();

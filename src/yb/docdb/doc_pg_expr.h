@@ -7,6 +7,7 @@
 #ifndef YB_DOCDB_DOC_PG_EXPR_H_
 #define YB_DOCDB_DOC_PG_EXPR_H_
 
+#include "yb/common/schema.h"
 #include "yb/util/status.h"
 
 namespace yb {
@@ -26,7 +27,8 @@ class DocPgExprExecutor {
 
  private:
   class Private;
-  std::unique_ptr<Private> private_;
+  struct private_deleter { void operator()(Private*) const; };
+  std::unique_ptr<Private, private_deleter> private_;
 };
 
 } // namespace docdb

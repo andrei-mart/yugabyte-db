@@ -2,6 +2,9 @@
 # Functions to be exported by postgres DLLs
 
 # Memory Context API
+YbgCreateMemoryContext
+YbgGetCurrentMemoryContext
+YbgSetCurrentMemoryContext
 YbgPrepareMemoryContext
 YbgResetMemoryContext
 YbgDeleteMemoryContext

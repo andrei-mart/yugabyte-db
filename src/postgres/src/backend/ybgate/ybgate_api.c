@@ -37,6 +37,40 @@
 //-----------------------------------------------------------------------------
 
 
+YbgStatus YbgGetCurrentMemoryContext(YbgMemoryContext *memctx)
+{
+	PG_SETUP_ERROR_REPORTING();
+
+	*memctx = GetThreadLocalCurrentMemoryContext();
+
+	return PG_STATUS_OK;
+}
+
+YbgStatus YbgSetCurrentMemoryContext(YbgMemoryContext memctx,
+									 YbgMemoryContext *oldctx)
+{
+	PG_SETUP_ERROR_REPORTING();
+
+	YbgMemoryContext prev = SetThreadLocalCurrentMemoryContext(memctx);
+	if (oldctx != NULL)
+	{
+		*oldctx = prev;
+	}
+
+	return PG_STATUS_OK;
+}
+
+YbgStatus YbgCreateMemoryContext(YbgMemoryContext parent,
+								 const char *name,
+								 YbgMemoryContext *memctx)
+{
+	PG_SETUP_ERROR_REPORTING();
+
+	*memctx = CreateThreadLocalCurrentMemoryContext(parent, name);
+
+	return PG_STATUS_OK;
+}
+
 YbgStatus YbgPrepareMemoryContext()
 {
 	PG_SETUP_ERROR_REPORTING();

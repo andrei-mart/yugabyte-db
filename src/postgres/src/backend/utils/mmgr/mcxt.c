@@ -49,13 +49,19 @@ MemoryContext SetThreadLocalCurrentMemoryContext(MemoryContext memctx)
 	return (MemoryContext) YBCPgSetThreadLocalCurrentMemoryContext(memctx);
 }
 
+MemoryContext CreateThreadLocalCurrentMemoryContext(MemoryContext parent,
+													const char *name)
+{
+	return AllocSetContextCreateExtended(parent, name, ALLOCSET_SMALL_SIZES);
+}
+
 void PrepareThreadLocalCurrentMemoryContext()
 {
 	if (YBCPgGetThreadLocalCurrentMemoryContext() == NULL)
 	{
 		MemoryContext memctx = AllocSetContextCreate((MemoryContext) NULL,
-		                                             "DocDBExprMemoryContext",
-		                                             ALLOCSET_SMALL_SIZES);
+													 "DocDBExprMemoryContext",
+													 ALLOCSET_SMALL_SIZES);
 		YBCPgSetThreadLocalCurrentMemoryContext(memctx);
 	}
 }
