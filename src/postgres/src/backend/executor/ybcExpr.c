@@ -119,9 +119,7 @@ bool yb_can_pushdown_func(Oid funcid)
 	return true;
 }
 
-bool YbCanPushdownExpr(Expr *pg_expr,
-					   int *num_params,
-					   YBExprParamDesc **params)
+bool YbCanPushdownExpr(Expr *pg_expr, List **params)
 {
 	switch (pg_expr->type)
 	{
@@ -153,7 +151,7 @@ bool YbCanPushdownExpr(Expr *pg_expr,
 			foreach(lc, args)
 			{
 				Expr *arg = (Expr *) lfirst(lc);
-				if (!YbCanPushdownExpr(arg, num_params, params)) {
+				if (!YbCanPushdownExpr(arg, params)) {
 					return false;
 				}
 			}
@@ -162,7 +160,7 @@ bool YbCanPushdownExpr(Expr *pg_expr,
 		case T_RelabelType:
 		{
 			RelabelType *rt = castNode(RelabelType, pg_expr);
-			return YbCanPushdownExpr(rt->arg, num_params, params);
+			return YbCanPushdownExpr(rt->arg, params);
 		}
 		case T_Const:
 		{
@@ -172,28 +170,21 @@ bool YbCanPushdownExpr(Expr *pg_expr,
 		{
 			Var		   *var_expr = castNode(Var, pg_expr);
 			AttrNumber	attno = var_expr->varattno;
+			ListCell   *lc;
 			YBExprParamDesc *param;
-			if (*num_params == 0)
+			foreach(lc, *params)
 			{
-				*num_params = 1;
-				*params = param = palloc(sizeof(YBExprParamDesc));
-			}
-			else
-			{
-				for (int i = 0; i < *num_params; i++)
+				param =	(YBExprParamDesc *) lfirst(lc);
+				if (param->attno == attno)
 				{
-					if ((*params)[i].attno == attno)
-					{
-						return true;
-					}
+					return true;
 				}
-				*num_params += 1;
-				*params = repalloc(*params, *num_params * sizeof(YBExprParamDesc));
-				param = *params + *num_params - 1;
 			}
+			param =	(YBExprParamDesc *) palloc(sizeof(YBExprParamDesc));
 			param->attno = attno;
 			param->typid = var_expr->vartype;
 			param->typmod = var_expr->vartypmod;
+			*params = lappend(*params, param);
 			return true;
 		}
 		default:
@@ -204,17 +195,18 @@ bool YbCanPushdownExpr(Expr *pg_expr,
 }
 
 YBCPgExpr YBCNewEvalSingleParamExprCall(YBCPgStatement ybc_stmt,
-                                        Expr *pg_expr,
-                                        int32_t attno,
-                                        int32_t typid,
-                                        int32_t typmod,
-                                        int32_t collid) {
-	YBExprParamDesc params[1];
-	params[0].attno = attno;
-	params[0].typid = typid;
-	params[0].typmod = typmod;
-	params[0].collid = collid;
-	return YBCNewEvalExprCall(ybc_stmt, pg_expr, params, 1);
+										Expr *pg_expr,
+										int32_t attno,
+										int32_t typid,
+										int32_t typmod,
+										int32_t collid)
+{
+	YBExprParamDesc param;
+	param.attno = attno;
+	param.typid = typid;
+	param.typmod = typmod;
+	param.collid = collid;
+	return YBCNewEvalExprCall(ybc_stmt, pg_expr, list_make1(&param));
 }
 
 /*
@@ -222,14 +214,15 @@ YBCPgExpr YBCNewEvalSingleParamExprCall(YBCPgStatement ybc_stmt,
  * the first argument and return type.
  */
 YBCPgExpr YBCNewEvalExprCall(YBCPgStatement ybc_stmt,
-                             Expr *pg_expr,
-                             YBExprParamDesc *params,
-                             int num_params)
+							 Expr *pg_expr,
+							 List *params)
 {
+	ListCell *lc;
 	YBCPgExpr ybc_expr = NULL;
-	const YBCPgTypeEntity *type_ent = YbDataTypeFromOidMod(InvalidAttrNumber, params[0].typid);
+	YBExprParamDesc *param = (YBExprParamDesc *) linitial(params);
+	const YBCPgTypeEntity *type_ent = YbDataTypeFromOidMod(InvalidAttrNumber, param->typid);
 	YBCPgCollationInfo collation_info;
-	YBGetCollationInfo(params[0].collid, type_ent, 0 /* Datum */, true /* is_null */,
+	YBGetCollationInfo(param->collid, type_ent, 0 /* Datum */, true /* is_null */,
 					   &collation_info);
 	YBCPgNewOperator(ybc_stmt, "eval_expr_call", type_ent,
 					 collation_info.collate_is_valid_non_c, &ybc_expr);
@@ -244,17 +237,18 @@ YBCPgExpr YBCNewEvalExprCall(YBCPgStatement ybc_stmt,
 	 * DocDB Schema.
 	 * TODO(mihnea): Eventually DocDB should know the full YSQL/PG types and we can remove this.
 	 */
-	for (int i = 0; i < num_params; i++) {
-		Datum attno = Int32GetDatum(params[i].attno);
-		YBCPgExpr attno_expr = YBCNewConstant(ybc_stmt, INT4OID, InvalidOid, attno, /* IsNull */ false);
+	foreach(lc, params) {
+		param = (YBExprParamDesc *) lfirst(lc);
+		Datum attno = Int32GetDatum(param->attno);
+		YBCPgExpr attno_expr = YBCNewConstant(ybc_stmt, INT4OID, InvalidOid, attno, false);
 		YBCPgOperatorAppendArg(ybc_expr, attno_expr);
 
-		Datum typid = Int32GetDatum(params[i].typid);
-		YBCPgExpr typid_expr = YBCNewConstant(ybc_stmt, INT4OID, InvalidOid, typid, /* IsNull */ false);
+		Datum typid = Int32GetDatum(param->typid);
+		YBCPgExpr typid_expr = YBCNewConstant(ybc_stmt, INT4OID, InvalidOid, typid, false);
 		YBCPgOperatorAppendArg(ybc_expr, typid_expr);
 
-		Datum typmod = Int32GetDatum(params[i].typmod);
-		YBCPgExpr typmod_expr = YBCNewConstant(ybc_stmt, INT4OID, InvalidOid, typmod, /* IsNull */ false);
+		Datum typmod = Int32GetDatum(param->typmod);
+		YBCPgExpr typmod_expr = YBCNewConstant(ybc_stmt, INT4OID, InvalidOid, typmod, false);
 		YBCPgOperatorAppendArg(ybc_expr, typmod_expr);
 	}
 	return ybc_expr;

@@ -961,7 +961,7 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
 
     // Match the row with the where condition before adding to the row block.
     bool is_match = true;
-    expr_exec.ExecWhereExpr(row, &is_match);
+    RETURN_NOT_OK(expr_exec.ExecWhereExpr(row, &is_match));
     if (is_match) {
       match_count++;
       if (request_.is_aggregate()) {

@@ -55,7 +55,7 @@ extern YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id,
 extern YBCPgExpr YBCNewConstantVirtual(YBCPgStatement ybc_stmt, Oid type_id,
 									   YBCPgDatumKind kind);
 
-extern bool YbCanPushdownExpr(Expr *pg_expr, int *num_params, YBExprParamDesc **params);
+extern bool YbCanPushdownExpr(Expr *pg_expr, List **params);
 
 // Construct a generic eval_expr call for given a PG Expr and its expected type and attno.
 extern YBCPgExpr YBCNewEvalSingleParamExprCall(YBCPgStatement ybc_stmt,
@@ -66,9 +66,8 @@ extern YBCPgExpr YBCNewEvalSingleParamExprCall(YBCPgStatement ybc_stmt,
                                                int32_t collation_id);
 
 YBCPgExpr YBCNewEvalExprCall(YBCPgStatement ybc_stmt,
-                             Expr *pg_expr,
-                             YBExprParamDesc *params,
-                             int num_params);
+							 Expr *pg_expr,
+							 List *params);
 
 extern YbPgExecOutParam *YbCreateExecOutParam();
 

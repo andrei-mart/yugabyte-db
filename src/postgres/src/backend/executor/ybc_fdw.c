@@ -163,8 +163,11 @@ ybcGetForeignPlan(PlannerInfo *root,
 				  Plan *outer_plan)
 {
 	YbFdwPlanState *yb_plan_state = (YbFdwPlanState *) baserel->fdw_private;
-	Index          scan_relid     = baserel->relid;
-	ListCell       *lc;
+	Index			scan_relid = baserel->relid;
+	List		   *local_clauses = NIL;
+	List		   *remote_clauses = NIL;
+	List		   *remote_params = NIL;
+	ListCell	   *lc;
 
 	scan_clauses = extract_actual_clauses(scan_clauses, false);
 
@@ -229,15 +232,31 @@ ybcGetForeignPlan(PlannerInfo *root,
 		}
 	}
 
+	foreach(lc, scan_clauses)
+	{
+		List *params = NIL;
+		Expr *expr = (Expr *) lfirst(lc);
+		if (YbCanPushdownExpr(expr, &params))
+		{
+			remote_clauses = lappend(remote_clauses, expr);
+			remote_params = list_concat(remote_params, params);
+		}
+		else
+		{
+			local_clauses = lappend(local_clauses, expr);
+			list_free_deep(params);
+		}
+	}
+
 	/* Create the ForeignScan node */
-	return make_foreignscan(tlist,  /* target list */
-	                        scan_clauses,
-	                        scan_relid,
-	                        NIL,    /* expressions YB may evaluate (none) */
-	                        target_attrs,  /* fdw_private data for YB */
-	                        NIL,    /* custom YB target list (none for now) */
-	                        NIL,    /* custom YB target list (none for now) */
-	                        outer_plan);
+	return make_foreignscan(tlist,           /* local target list */
+							local_clauses,   /* local qual */
+							scan_relid,
+							target_attrs,    /* referenced attributes */
+							remote_params,   /* fdw_private data (attribute types) */
+							NIL,             /* remote target list (none for now) */
+							remote_clauses,  /* remote qual */
+							outer_plan);
 }
 
 /* ------------------------------------------------------------------------- */
@@ -327,7 +346,7 @@ ybcSetupScanTargets(ForeignScanState *node)
 	ListCell *lc;
 
 	/* Planning function above should ensure target list is set */
-	List *target_attrs = foreignScan->fdw_private;
+	List *target_attrs = foreignScan->fdw_exprs;
 
 	MemoryContext oldcontext =
 		MemoryContextSwitchTo(node->ss.ps.ps_ExprContext->ecxt_per_query_memory);
@@ -498,32 +517,31 @@ ybcSetupScanTargets(ForeignScanState *node)
 static void
 ybSetupScanQual(ForeignScanState *node)
 {
+	ForeignScan *foreignScan = (ForeignScan *) node->ss.ps.plan;
 	YbFdwExecState *yb_state = (YbFdwExecState *) node->fdw_state;
-	List	   *qual = node->ss.ps.plan->qual;
+	List	   *qual = foreignScan->fdw_recheck_quals;
+	List	   *params;
 	ListCell   *lc;
+	YBExprParamDesc *param;
 
 	MemoryContext oldcontext =
 		MemoryContextSwitchTo(node->ss.ps.ps_ExprContext->ecxt_per_query_memory);
 
+	params = list_copy(foreignScan->fdw_private);
+	param = palloc(sizeof(YBExprParamDesc));
+	param->attno = InvalidAttrNumber;
+	param->typid = BOOLOID;
+	param->typmod = -1;
+	param->collid = InvalidOid;
+	params = lcons(param, params);
+
 	foreach(lc, qual)
 	{
 		Expr *expr = (Expr *) lfirst(lc);
-		int num_params = 1;
-		YBExprParamDesc *params = palloc(sizeof(YBExprParamDesc));
-		params->attno = InvalidAttrNumber;
-		params->typid = BOOLOID;
-		params->typmod = -1;
-		params->collid = InvalidOid;
-		if (YbCanPushdownExpr(expr, &num_params, &params))
-		{
-			YBCPgExpr yb_expr = YBCNewEvalExprCall(yb_state->handle,
-												   expr,
-												   params,
-												   num_params);
-			HandleYBStatus(YbPgDmlAppendQual(yb_state->handle, yb_expr));
-		}
-		pfree(params);
+		YBCPgExpr yb_expr = YBCNewEvalExprCall(yb_state->handle, expr, params);
+		HandleYBStatus(YbPgDmlAppendQual(yb_state->handle, yb_expr));
 	}
+	list_free(params);
 
 	MemoryContextSwitchTo(oldcontext);
 }
