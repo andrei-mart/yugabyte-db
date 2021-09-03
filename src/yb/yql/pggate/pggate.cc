@@ -1359,6 +1359,22 @@ Status PgApiImpl::NewOperator(
   return Status::OK();
 }
 
+Status PgApiImpl::NewEvalExpr(PgStatement *stmt,
+                              const YBCPgTypeEntity *type_entity,
+                              bool collate_is_valid_non_c, PgExpr **op_handle) {
+  if (!stmt) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+
+  // Create operator.
+  PgExpr::SharedPtr pg_op = make_shared<PgEvalExpr>(type_entity, collate_is_valid_non_c);
+  stmt->AddExpr(pg_op);
+
+  *op_handle = pg_op.get();
+  return Status::OK();
+}
+
 Status PgApiImpl::OperatorAppendArg(PgExpr *op_handle, PgExpr *arg) {
   if (!op_handle || !arg) {
     // Invalid handle.

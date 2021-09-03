@@ -303,9 +303,28 @@ class PgOperator : public PgExpr {
   // Setup operator expression when constructing statement.
   virtual CHECKED_STATUS PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb);
 
+protected:
+  std::vector<PgExpr*> args_;
+
  private:
   const std::string opname_;
-  std::vector<PgExpr*> args_;
+};
+
+class PgEvalExpr : public PgOperator {
+ public:
+  // Public types.
+  typedef std::shared_ptr<PgEvalExpr> SharedPtr;
+  typedef std::shared_ptr<const PgEvalExpr> SharedPtrConst;
+
+  typedef std::unique_ptr<PgEvalExpr> UniPtr;
+  typedef std::unique_ptr<const PgEvalExpr> UniPtrConst;
+
+  PgEvalExpr(const YBCPgTypeEntity *type_entity,
+             bool collate_is_valid_non_c)
+    : PgOperator("eval_expr_call", type_entity, collate_is_valid_non_c) {}
+
+  // Setup operator expression when constructing statement.
+  virtual CHECKED_STATUS PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb);
 };
 
 }  // namespace pggate

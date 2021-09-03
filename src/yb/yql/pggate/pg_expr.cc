@@ -811,5 +811,21 @@ Status PgOperator::PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
   return Status::OK();
 }
 
+//--------------------------------------------------------------------------------------------------
+
+Status PgEvalExpr::PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
+  RETURN_NOT_OK(PgOperator::PrepareForRead(pg_stmt, expr_pb));
+  int num_params = (args_.size() - 1) / 3;
+  for (int i = 0; i < num_params; i++) {
+    PgExpr *attnum_expr = args_[3 * i + 1];
+    QLValuePB value;
+    RETURN_NOT_OK(attnum_expr->Eval(&value));
+    if (value.int32_value() != 0) {
+      RETURN_NOT_OK(pg_stmt->PrepareColumnForRead(value.int32_value(), nullptr));
+    }
+  }
+  return Status::OK();
+}
+
 }  // namespace pggate
 }  // namespace yb

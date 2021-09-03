@@ -831,6 +831,12 @@ YBCStatus YBCPgNewOperator(
       stmt, opname, type_entity, collate_is_valid_non_c, op_handle));
 }
 
+YBCStatus YBCPgNewEvalExpr(YBCPgStatement stmt,
+                           const YBCPgTypeEntity *type_entity,
+                           bool collate_is_valid_non_c, YBCPgExpr *op_handle) {
+  return ToYBCStatus(pgapi->NewEvalExpr(stmt, type_entity, collate_is_valid_non_c, op_handle));
+}
+
 YBCStatus YBCPgOperatorAppendArg(YBCPgExpr op_handle, YBCPgExpr arg) {
   return ToYBCStatus(pgapi->OperatorAppendArg(op_handle, arg));
 }

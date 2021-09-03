@@ -926,17 +926,20 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
     scan_schema = &schema;
   }
 
+  VLOG(1) << "Initialized iterator";
   DocPgExprExecutor expr_exec(scan_schema);
   for (const PgsqlExpressionPB& expr : request_.where_expr()) {
     RETURN_NOT_OK(expr_exec.AddWhereExpression(expr));
+    VLOG(1) << "Added where expression to the executor";
   }
-  VLOG(1) << "Initialized iterator";
+  VLOG(1) << "Started iterator";
 
   // Set scan start time.
   bool scan_time_exceeded = false;
 
   // Fetching data.
   int match_count = 0;
+  int row_count = 0;
   QLTableRow row;
   while (fetched_rows < row_count_limit && VERIFY_RESULT(iter->HasNext()) &&
          !scan_time_exceeded) {
@@ -959,10 +962,12 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
       RETURN_NOT_OK(iter->NextRow(projection, &row));
     }
 
+    row_count++;
     // Match the row with the where condition before adding to the row block.
     bool is_match = true;
     RETURN_NOT_OK(expr_exec.ExecWhereExpr(row, &is_match));
     if (is_match) {
+      VLOG(1) << "Found matching row";
       match_count++;
       if (request_.is_aggregate()) {
         RETURN_NOT_OK(EvalAggregate(row));
@@ -972,9 +977,11 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
       }
     }
 
-    // Check every row_count_limit matches whether we've exceeded our scan time.
-    if (match_count % row_count_limit == 0) {
+    // Check every row_count_limit rows whether we've exceeded our scan time.
+    if (row_count >= row_count_limit) {
+      row_count = 0;
       scan_time_exceeded = CoarseMonoClock::now() >= deadline;
+      VLOG(1) << "Deadline is " << (scan_time_exceeded ? "" : "not ") << "exceeded";
     }
   }
 
