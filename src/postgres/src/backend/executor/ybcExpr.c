@@ -224,8 +224,7 @@ YBCPgExpr YBCNewEvalExprCall(YBCPgStatement ybc_stmt,
 	YBCPgCollationInfo collation_info;
 	YBGetCollationInfo(param->collid, type_ent, 0 /* Datum */, true /* is_null */,
 					   &collation_info);
-	YBCPgNewOperator(ybc_stmt, "eval_expr_call", type_ent,
-					 collation_info.collate_is_valid_non_c, &ybc_expr);
+	YBCPgNewEvalExpr(ybc_stmt, type_ent, collation_info.collate_is_valid_non_c, &ybc_expr);
 
 	Datum expr_datum = CStringGetDatum(nodeToString(pg_expr));
 	YBCPgExpr expr = YBCNewConstant(ybc_stmt, CSTRINGOID, C_COLLATION_OID,

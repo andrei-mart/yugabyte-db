@@ -485,6 +485,10 @@ YBCStatus YBCPgUpdateConstChar(YBCPgExpr expr, const char *value, int64_t bytes,
 YBCStatus YBCPgNewOperator(
     YBCPgStatement stmt, const char *opname, const YBCPgTypeEntity *type_entity,
     bool collate_is_valid_non_c, YBCPgExpr *op_handle);
+YBCStatus YBCPgNewEvalExpr(YBCPgStatement stmt,
+                           const YBCPgTypeEntity *type_entity,
+                           bool collate_is_valid_non_c,
+                           YBCPgExpr *op_handle);
 YBCStatus YBCPgOperatorAppendArg(YBCPgExpr op_handle, YBCPgExpr arg);
 
 YBCStatus YBCGetDocDBKeySize(uint64_t data, const YBCPgTypeEntity *typeentity,

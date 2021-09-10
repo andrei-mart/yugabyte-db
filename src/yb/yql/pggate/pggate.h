@@ -529,7 +529,8 @@ class PgApiImpl {
   CHECKED_STATUS OperatorAppendArg(PgExpr *op_handle, PgExpr *arg);
   CHECKED_STATUS NewEvalExpr(PgStatement *stmt,
                              const YBCPgTypeEntity *type_entity,
-                             bool collate_is_valid_non_c, PgExpr **op_handle);
+                             bool collate_is_valid_non_c,
+                             PgExpr **op_handle);
 
   // Foreign key reference caching.
   void DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid);

@@ -1361,7 +1361,8 @@ Status PgApiImpl::NewOperator(
 
 Status PgApiImpl::NewEvalExpr(PgStatement *stmt,
                               const YBCPgTypeEntity *type_entity,
-                              bool collate_is_valid_non_c, PgExpr **op_handle) {
+                              bool collate_is_valid_non_c,
+                              PgExpr **op_handle) {
   if (!stmt) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");

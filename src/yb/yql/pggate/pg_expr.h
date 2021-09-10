@@ -319,8 +319,7 @@ class PgEvalExpr : public PgOperator {
   typedef std::unique_ptr<PgEvalExpr> UniPtr;
   typedef std::unique_ptr<const PgEvalExpr> UniPtrConst;
 
-  PgEvalExpr(const YBCPgTypeEntity *type_entity,
-             bool collate_is_valid_non_c)
+  PgEvalExpr(const YBCPgTypeEntity *type_entity, bool collate_is_valid_non_c)
     : PgOperator("eval_expr_call", type_entity, collate_is_valid_non_c) {}
 
   // Setup operator expression when constructing statement.
