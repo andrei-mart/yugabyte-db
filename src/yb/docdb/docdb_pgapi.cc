@@ -61,6 +61,7 @@ class DocPgTypeAnalyzer {
     if (iter != type_map_.end()) {
       return iter->second;
     }
+    LOG(FATAL) << "Could not find type entity for oid " << type_oid;
     return nullptr;
   }
 

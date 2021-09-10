@@ -79,6 +79,8 @@ bool yb_can_pushdown_func(Oid funcid)
 {
 	HeapTuple		tuple;
 	Form_pg_proc	pg_proc;
+	char			provolatile;
+	Oid				prorettype;
 
 	if (!is_builtin_func(funcid))
 	{
@@ -89,34 +91,11 @@ bool yb_can_pushdown_func(Oid funcid)
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for function %u", funcid);
 	pg_proc = (Form_pg_proc) GETSTRUCT(tuple);
-	if (pg_proc->provolatile != PROVOLATILE_IMMUTABLE)
-	{
-		ReleaseSysCache(tuple);
-		return false;
-	}
-
-	/*
-	 * Polymorhipc pseduo-types (e.g. anyarray) may require additional
-	 * processing (requiring syscatalog access) to fully resolve to a concrete
-	 * type. Therefore they are not supported by DocDB.
-	 */
-	if (IsPolymorphicType(pg_proc->prorettype))
-	{
-		ReleaseSysCache(tuple);
-		return false;
-	}
-
-	for (int i = 0; i < pg_proc->pronargs; i++)
-	{
-		if (IsPolymorphicType(pg_proc->proargtypes.values[i]))
-		{
-			ReleaseSysCache(tuple);
-			return false;
-		}
-	}
-
+	provolatile = pg_proc->provolatile;
+	prorettype = pg_proc->prorettype;
 	ReleaseSysCache(tuple);
-	return true;
+	return (provolatile == PROVOLATILE_IMMUTABLE &&
+			YBCPgFindTypeEntity(prorettype));
 }
 
 bool YbCanPushdownExpr(Expr *pg_expr, List **params)
@@ -144,14 +123,16 @@ bool YbCanPushdownExpr(Expr *pg_expr, List **params)
 				args = op_expr->args;
 			}
 
-			if (!yb_can_pushdown_func(funcid)) {
+			if (!yb_can_pushdown_func(funcid))
+			{
 				return false;
 			}
 
 			foreach(lc, args)
 			{
 				Expr *arg = (Expr *) lfirst(lc);
-				if (!YbCanPushdownExpr(arg, params)) {
+				if (!YbCanPushdownExpr(arg, params))
+				{
 					return false;
 				}
 			}
@@ -172,6 +153,10 @@ bool YbCanPushdownExpr(Expr *pg_expr, List **params)
 			AttrNumber	attno = var_expr->varattno;
 			ListCell   *lc;
 			YBExprParamDesc *param;
+			if (!YBCPgFindTypeEntity(var_expr->vartype))
+			{
+				return false;
+			}
 			foreach(lc, *params)
 			{
 				param =	(YBExprParamDesc *) lfirst(lc);
@@ -184,6 +169,7 @@ bool YbCanPushdownExpr(Expr *pg_expr, List **params)
 			param->attno = attno;
 			param->typid = var_expr->vartype;
 			param->typmod = var_expr->vartypmod;
+			param->collid = var_expr->varcollid;
 			*params = lappend(*params, param);
 			return true;
 		}
