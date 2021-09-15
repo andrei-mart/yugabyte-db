@@ -517,6 +517,7 @@ ybcSetupScanTargets(ForeignScanState *node)
 static void
 ybSetupScanQual(ForeignScanState *node)
 {
+	EState	   *estate = node->ss.ps.state;
 	ForeignScan *foreignScan = (ForeignScan *) node->ss.ps.plan;
 	YbFdwExecState *yb_state = (YbFdwExecState *) node->fdw_state;
 	List	   *qual = foreignScan->fdw_recheck_quals;
@@ -538,6 +539,7 @@ ybSetupScanQual(ForeignScanState *node)
 	foreach(lc, qual)
 	{
 		Expr *expr = (Expr *) lfirst(lc);
+		expr = YbExprInstantiateParams(expr, estate->es_param_list_info);
 		YBCPgExpr yb_expr = YBCNewEvalExprCall(yb_state->handle, expr, params);
 		HandleYBStatus(YbPgDmlAppendQual(yb_state->handle, yb_expr));
 	}

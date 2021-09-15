@@ -29,12 +29,6 @@
 #include "utils/rel.h"
 
 
-void YBCExprInstantiateParams(Expr* expr, ParamListInfo paramLI);
-
-bool YBCIsSupportedSingleRowModifyWhereExpr(Expr *expr);
-
-bool YbIsFuncIdSupportedForSingleRowModifyOpt(Oid funcid);
-
 bool YBCIsSingleRowModify(PlannedStmt *pstmt);
 
 bool YBCIsSingleRowUpdateOrDelete(ModifyTable *modifyTable);

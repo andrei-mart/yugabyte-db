@@ -2825,7 +2825,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		var = castNode(Var, get_leftop(clause));
 
 		/* Verify expression is supported. */
-		if (!YBCIsSupportedSingleRowModifyWhereExpr(expr))
+		if (!YbCanPushdownExpr(expr, NULL))
 		{
 			RelationClose(relation);
 			return false;

@@ -798,7 +798,7 @@ bool YBCExecuteUpdate(Relation rel,
 			Expr *expr = copyObject(tle->expr);
 			List *params = NIL;
 			YBExprParamDesc *param;
-			YBCExprInstantiateParams(expr, estate->es_param_list_info);
+			expr = YbExprInstantiateParams(expr, estate->es_param_list_info);
 			Assert(YbCanPushdownExpr(expr, &params));
 			param = palloc(sizeof(YBExprParamDesc));
 			param->attno = attnum;

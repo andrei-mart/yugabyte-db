@@ -27,6 +27,9 @@
 #include "catalog/pg_collation.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_proc.h"
+#include "nodes/makefuncs.h"
+#include "nodes/nodeFuncs.h"
+#include "utils/datum.h"
 #include "utils/relcache.h"
 #include "utils/rel.h"
 #include "parser/parse_type.h"
@@ -75,6 +78,63 @@ YBCPgExpr YBCNewConstantVirtual(YBCPgStatement ybc_stmt, Oid type_id, YBCPgDatum
 	return expr;
 }
 
+Node *yb_expr_instantiate_params_mutator(Node *node, ParamListInfo paramLI)
+{
+	if (node == NULL)
+		return NULL;
+
+	if (IsA(node, Param))
+	{
+		Param *param = castNode(Param, node);
+		ParamExternData *prm = NULL;
+		ParamExternData prmdata;
+		if (paramLI->paramFetch != NULL)
+			prm = paramLI->paramFetch(paramLI, param->paramid,
+									  true, &prmdata);
+		else
+			prm = &paramLI->params[param->paramid - 1];
+
+		if (!OidIsValid(prm->ptype) ||
+			prm->ptype != param->paramtype ||
+			!(prm->pflags & PARAM_FLAG_CONST))
+		{
+			/* Planner should ensure this does not happen */
+			elog(ERROR, "Invalid parameter: %s", nodeToString(param));
+		}
+		int16		typLen = 0;
+		bool		typByVal = false;
+		Datum		pval = 0;
+
+		get_typlenbyval(param->paramtype, &typLen, &typByVal);
+		if (prm->isnull || typByVal)
+			pval = prm->value;
+		else
+			pval = datumCopy(prm->value, typByVal, typLen);
+
+		return (Node *) makeConst(param->paramtype,
+								  param->paramtypmod,
+								  param->paramcollid,
+								  (int) typLen,
+								  pval,
+								  prm->isnull,
+								  typByVal);
+	}
+	return expression_tree_mutator(node,
+								   yb_expr_instantiate_params_mutator,
+								   (void *) paramLI);
+}
+
+Expr *YbExprInstantiateParams(Expr* expr, ParamListInfo paramLI)
+{
+	/* Fast-path if there are no params. */
+	if (paramLI == NULL)
+		return expr;
+
+	return (Expr *) expression_tree_mutator((Node *) expr,
+											yb_expr_instantiate_params_mutator,
+											(void *) paramLI);
+}
+
 bool yb_can_pushdown_func(Oid funcid)
 {
 	HeapTuple		tuple;
@@ -84,6 +144,16 @@ bool yb_can_pushdown_func(Oid funcid)
 	{
 		return false;
 	}
+
+        /*                                                                                           
+         * Check whether this function is on a list of hand-picked functions 
+         * safe for pushdown.                   
+         */                                                                                          
+        for (int i = 0; i < yb_funcs_safe_for_pushdown_count; ++i)                                   
+        {                                                                                            
+                if (funcid == yb_funcs_safe_for_pushdown[i])                                         
+                        return true;                                                                 
+        }                                                                                            
 
 	tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
 	if (!HeapTupleIsValid(tuple))
