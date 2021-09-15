@@ -796,15 +796,17 @@ bool YBCExecuteUpdate(Relation rel,
 		{
 			TargetEntry *tle = (TargetEntry *) lfirst(pushdown_lc);
 			Expr *expr = copyObject(tle->expr);
+			List *params = NIL;
+			YBExprParamDesc *param;
 			YBCExprInstantiateParams(expr, estate->es_param_list_info);
-
-			YBCPgExpr ybc_expr = YBCNewEvalSingleParamExprCall(update_stmt,
-			                                                   expr,
-			                                                   attnum,
-			                                                   type_id,
-			                                                   type_mod,
-			                                                   coll_id);
-
+			Assert(YbCanPushdownExpr(expr, &params));
+			param = palloc(sizeof(YBExprParamDesc));
+			param->attno = attnum;
+			param->typid = type_id;
+			param->typmod = type_mod;
+			param->collid = coll_id;
+			params = lcons(param, params);
+			YBCPgExpr ybc_expr = YBCNewEvalExprCall(update_stmt, expr, params);
 			HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr));
 
 			pushdown_lc = lnext(pushdown_lc);

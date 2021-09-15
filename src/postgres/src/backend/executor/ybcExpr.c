@@ -79,8 +79,6 @@ bool yb_can_pushdown_func(Oid funcid)
 {
 	HeapTuple		tuple;
 	Form_pg_proc	pg_proc;
-	char			provolatile;
-	Oid				prorettype;
 
 	if (!is_builtin_func(funcid))
 	{
@@ -91,11 +89,28 @@ bool yb_can_pushdown_func(Oid funcid)
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for function %u", funcid);
 	pg_proc = (Form_pg_proc) GETSTRUCT(tuple);
-	provolatile = pg_proc->provolatile;
-	prorettype = pg_proc->prorettype;
+	if (pg_proc->provolatile != PROVOLATILE_IMMUTABLE)
+	{
+		ReleaseSysCache(tuple);
+		return false;
+	}
+	if (!YBCPgFindTypeEntity(pg_proc->prorettype) ||
+		IsPolymorphicType(pg_proc->prorettype))
+	{
+		ReleaseSysCache(tuple);
+		return false;
+	}
+	for (int i = 0; i < pg_proc->pronargs; i++)
+	{
+		Oid typid = pg_proc->proargtypes.values[i];
+		if (!YBCPgFindTypeEntity(typid) || IsPolymorphicType(typid))
+		{
+			ReleaseSysCache(tuple);
+			return false;
+		}
+	}
 	ReleaseSysCache(tuple);
-	return (provolatile == PROVOLATILE_IMMUTABLE &&
-			YBCPgFindTypeEntity(prorettype));
+	return true;
 }
 
 bool YbCanPushdownExpr(Expr *pg_expr, List **params)
@@ -143,34 +158,64 @@ bool YbCanPushdownExpr(Expr *pg_expr, List **params)
 			RelabelType *rt = castNode(RelabelType, pg_expr);
 			return YbCanPushdownExpr(rt->arg, params);
 		}
+		case T_NullTest:
+		{
+			NullTest *nt = castNode(NullTest, pg_expr);
+			return !nt->argisrow && YbCanPushdownExpr(nt->arg, params);
+		}
+		case T_BoolExpr:
+		{
+			BoolExpr *be = castNode(BoolExpr, pg_expr);
+			ListCell *lc;
+			foreach(lc, be->args)
+			{
+				Expr *arg = (Expr *) lfirst(lc);
+				if (!YbCanPushdownExpr(arg, params))
+				{
+					return false;
+				}
+			}
+			return true;
+		}
 		case T_Const:
 		{
 			return true;
+		}
+		case T_Param:
+		{
+			Param *p = castNode(Param, pg_expr);
+			return p->paramkind == PARAM_EXTERN &&
+					YBCPgFindTypeEntity(p->paramtype);
 		}
 		case T_Var:
 		{
 			Var		   *var_expr = castNode(Var, pg_expr);
 			AttrNumber	attno = var_expr->varattno;
-			ListCell   *lc;
-			YBExprParamDesc *param;
 			if (!YBCPgFindTypeEntity(var_expr->vartype))
 			{
 				return false;
 			}
-			foreach(lc, *params)
+			if (params)
 			{
-				param =	(YBExprParamDesc *) lfirst(lc);
-				if (param->attno == attno)
+				ListCell   *lc;
+				YBExprParamDesc *param;
+
+				foreach(lc, *params)
 				{
-					return true;
+					param =	(YBExprParamDesc *) lfirst(lc);
+					if (param->attno == attno)
+					{
+						return true;
+					}
 				}
+
+				param =	(YBExprParamDesc *) palloc(sizeof(YBExprParamDesc));
+				param->attno = attno;
+				param->typid = var_expr->vartype;
+				param->typmod = var_expr->vartypmod;
+				param->collid = var_expr->varcollid;
+				*params = lappend(*params, param);
 			}
-			param =	(YBExprParamDesc *) palloc(sizeof(YBExprParamDesc));
-			param->attno = attno;
-			param->typid = var_expr->vartype;
-			param->typmod = var_expr->vartypmod;
-			param->collid = var_expr->varcollid;
-			*params = lappend(*params, param);
 			return true;
 		}
 		default:

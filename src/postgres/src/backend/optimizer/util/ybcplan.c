@@ -27,6 +27,7 @@
 #include "access/htup_details.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
+#include "executor/ybcExpr.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodes.h"
 #include "nodes/plannodes.h"
@@ -125,9 +126,9 @@ bool YbIsFuncIdSupportedForSingleRowModifyOpt(Oid funcid)
 	 * optimization - i.e. it does not perform any lookups or writes to the
 	 * database that will convert this to a cross-shard operation.
 	 */
-	for (int i = 0; i < yb_funcs_safe_for_modify_fast_path_count; ++i)
+	for (int i = 0; i < yb_funcs_safe_for_pushdown_count; ++i)
 	{
-		if (funcid == yb_funcs_safe_for_modify_fast_path[i])
+		if (funcid == yb_funcs_safe_for_pushdown[i])
 			return true;
 	}
 	return false;
@@ -239,180 +240,6 @@ void YBCExprInstantiateParams(Expr* expr, ParamListInfo paramLI)
 }
 
 /*
- * Check if the function/procedure can be executed by DocDB (i.e. if we can
- * pushdown its execution).
- * The main current limitation is that DocDB's execution layer does not have
- * syscatalog access (cache lookup) so only specific builtins are supported.q
- */
-static bool YBCIsSupportedDocDBFunctionId(Oid funcid, Form_pg_proc pg_proc) {
-	if (!is_builtin_func(funcid))
-	{
-		return false;
-	}
-
-	/*
-	 * Polymorhipc pseduo-types (e.g. anyarray) may require additional
-	 * processing (requiring syscatalog access) to fully resolve to a concrete
-	 * type. Therefore they are not supported by DocDB.
-	 */
-	if (IsPolymorphicType(pg_proc->prorettype))
-	{
-		return false;
-	}
-
-	for (int i = 0; i < pg_proc->pronargs; i++)
-	{
-		if (IsPolymorphicType(pg_proc->proargtypes.values[i]))
-		{
-			return false;
-		}
-	}
-
-	return true;
-}
-
-static bool YBCAnalyzeExpression(Expr *expr, AttrNumber target_attnum, bool *has_vars, bool *has_docdb_unsupported_funcs) {
-	switch (nodeTag(expr))
-	{
-		case T_Const:
-			return true;
-		case T_Var:
-		{
-			/* References to table attrs (to be read) */
-			Var *var = castNode(Var, expr);
-			*has_vars = true;
-			return var->varattno == target_attnum;
-		}
-		case T_Param:
-		{
-			/* Bind variables. */
-			Param *param = castNode(Param, expr);
-			return param->paramkind == PARAM_EXTERN;
-		}
-		case T_RelabelType:
-		{
-			/*
-			 * RelabelType is a "dummy" type coercion between two binary-
-			 * compatible datatypes so we just recurse into its argument.
-			 */
-			RelabelType *rt = castNode(RelabelType, expr);
-			return YBCAnalyzeExpression(rt->arg, target_attnum, has_vars, has_docdb_unsupported_funcs);
-		}
-		case T_FuncExpr:
-		case T_OpExpr:
-		{
-			List         *args = NULL;
-			ListCell     *lc = NULL;
-			Oid          funcid = InvalidOid;
-			HeapTuple    tuple = NULL;
-			Oid          inputcollid = InvalidOid;
-
-			/* Get the function info. */
-			if (IsA(expr, FuncExpr))
-			{
-				FuncExpr *func_expr = castNode(FuncExpr, expr);
-				args = func_expr->args;
-				funcid = func_expr->funcid;
-				inputcollid = func_expr->inputcollid;
-			}
-			else if (IsA(expr, OpExpr))
-			{
-				OpExpr *op_expr = castNode(OpExpr, expr);
-				args = op_expr->args;
-				funcid = op_expr->opfuncid;
-				inputcollid = op_expr->inputcollid;
-			}
-
-			/*
-			 * Only allow functions that cannot modify the database or do
-			 * lookups.
-			 */
-			tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
-			if (!HeapTupleIsValid(tuple))
-				elog(ERROR, "cache lookup failed for function %u", funcid);
-			Form_pg_proc pg_proc = ((Form_pg_proc) GETSTRUCT(tuple));
-
-			if (pg_proc->provolatile != PROVOLATILE_IMMUTABLE &&
-				!YbIsFuncIdSupportedForSingleRowModifyOpt(funcid))
-			{
-				ReleaseSysCache(tuple);
-				return false;
-			}
-
-			if (!YBCIsSupportedDocDBFunctionId(funcid, pg_proc)) {
-				*has_docdb_unsupported_funcs = true;
-			}
-			ReleaseSysCache(tuple);
-
-			/* Checking all arguments are valid (stable). */
-			foreach (lc, args) {
-				Expr* expr = (Expr *) lfirst(lc);
-				if (!YBCAnalyzeExpression(expr, target_attnum, has_vars, has_docdb_unsupported_funcs)) {
-				    return false;
-				}
-			}
-
-			/*
-			 * Only allow C collation. Because Form_pg_proc does not indicate
-			 * whether the proc involves comparison, we are rather pessimistic
-			 * here and reject pushdown for non-C collation. However, we do
-			 * not really need to reject pushdown for non-comparison procs.
-			 * There are two ways to improve pushdown here:
-			 * (1) expand Form_pg_proc to have a new field that indicates a
-			 * proc does not involve comparison and thus is "collation-safe"
-			 * (PROCOLLATION_SAFE).
-			 * (2) build a list/hashtable of hot collation-safe builtin procs
-			 * that we want to pushdown.
-			 * No need to check collation of result (opcollid) because nested
-			 * expression results become the inputs of an outer expression.
-			 */
-			if (YBIsCollationValidNonC(inputcollid))
-				return false;
-
-			return true;
-		}
-		default:
-			break;
-	}
-
-	return false;
-}
-
-/*
- * Can expression be evaluated in DocDB.
- * Eventually any immutable expression whose only variables are column references.
- * Currently, limit to the case where the only referenced column is the target column.
- */
-bool YBCIsSupportedSingleRowModifyAssignExpr(Expr *expr, AttrNumber target_attnum, bool *needs_pushdown) {
-	bool has_vars = false;
-	bool has_docdb_unsupported_funcs = false;
-	bool is_basic_expr = YBCAnalyzeExpression(expr, target_attnum, &has_vars, &has_docdb_unsupported_funcs);
-
-	/* default, will set to true below if needed. */
-	*needs_pushdown = false;
-
-	/* Immediately bail for complex expressions */
-	if (!is_basic_expr)
-		return false;
-
-	/* If there are no variables, we can just evaluate it to a const. */
-	if (!has_vars)
-	{
-		return true;
-	}
-
-	/* We can push down expression evaluation to DocDB. */
-	if (has_vars && !has_docdb_unsupported_funcs)
-	{
-		*needs_pushdown = true;
-		return true;
-	}
-
-	/* Variables plus DocDB-unsupported funcs -> query layer must evaluate. */
-	return false;
-}
-
-/*
  * Returns true if the following are all true:
  *  - is insert, update, or delete command.
  *  - only one target table.
@@ -463,10 +290,7 @@ static bool ModifyTableIsSingleRowWrite(ModifyTable *modifyTable)
 			foreach(lc, values->plan.targetlist)
 			{
 				TargetEntry *target = (TargetEntry *) lfirst(lc);
-				bool needs_pushdown = false;
-				if (!YBCIsSupportedSingleRowModifyAssignExpr(target->expr,
-				                                             target->resno,
-				                                             &needs_pushdown))
+				if (!YbCanPushdownExpr(target->expr, NULL))
 				{
 					return false;
 				}

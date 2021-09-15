@@ -2538,9 +2538,6 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	*result_tlist = NIL;
 	Bitmapset *update_attrs = NULL;
 
-	/* For update, SET clause attrs whose RHS value to be evaluated by DocDB */
-	Bitmapset *pushdown_update_attrs = NULL;
-
 	/* Verify YB is enabled. */
 	if (!IsYugaByteEnabled())
 		return false;
@@ -2641,7 +2638,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		index_path = (IndexPath *) projection_path->subpath;
 
 		Bitmapset *primary_key_attrs = YBGetTablePrimaryKeyBms(relation);
-		
+
 		/*
 		 * Iterate through projection_path tlist, identify true user write columns from unspecified
 		 * columns. If true user write expression is not a supported single row write expression
@@ -2671,8 +2668,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 			}
 
 			/* Verify expression is supported. */
-			bool needs_pushdown = false;
-			if (!YBCIsSupportedSingleRowModifyAssignExpr(tle->expr, tle->resno, &needs_pushdown))
+			if (!YbCanPushdownExpr(tle->expr, NULL))
 			{
 				RelationClose(relation);
 				return false;
@@ -2704,12 +2700,6 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 			{
 				RelationClose(relation);
 				return false;
-			}
-
-			if (needs_pushdown)
-			{
-				pushdown_update_attrs = bms_add_member(
-				    pushdown_update_attrs, tle->resno - attr_offset);
 			}
 
 			subpath_tlist = lappend(subpath_tlist, tle);
@@ -2876,20 +2866,16 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	{
 		foreach(values, linitial(path->returningLists))
 		{
-			TargetEntry* tle = lfirst_node(TargetEntry, values);
-			int attr = tle->resorigcol;
-			/* 
-			 * When a RETURNING expression is not a projection of a base column,
-			 * its AttrNumber is InvalidAttrNumber.
-			 */
-			if (attr == InvalidAttrNumber && !YBCIsSupportedSingleRowModifyReturningExpr(tle->expr))
+			int attr = lfirst_node(TargetEntry, values)->resorigcol - attr_offset;
+			if (!bms_is_member(attr, update_attrs) &&
+				!bms_is_member(attr, primary_key_attrs))
 			{
 				RelationClose(relation);
 				return false;
 			}
 		}
 	}
-	else 
+	else
 	{
 		if (list_length(path->returningLists) > 0)
 		{
@@ -2946,7 +2932,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		}
 		else if (subpath_tlist_values && subpath_tlist_tle->resno == attr_num)
 		{
-			if (bms_is_member(subpath_tlist_tle->resno  - attr_offset, pushdown_update_attrs))
+			if (bms_is_member(subpath_tlist_tle->resno  - attr_offset, update_attrs))
 			{
 				/*
 				 * If the expr needs pushdown bypass query-layer evaluation.
@@ -2961,8 +2947,8 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 			}
 			else
 			{
-			  /* Use the SET value from the projection target list. */
-			  *result_tlist = lappend(*result_tlist, subpath_tlist_tle);
+				/* Use the SET value from the projection target list. */
+				*result_tlist = lappend(*result_tlist, subpath_tlist_tle);
 			}
 
 			subpath_tlist_values = lnext(subpath_tlist_values);

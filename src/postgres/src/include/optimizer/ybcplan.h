@@ -35,10 +35,6 @@ bool YBCIsSupportedSingleRowModifyWhereExpr(Expr *expr);
 
 bool YbIsFuncIdSupportedForSingleRowModifyOpt(Oid funcid);
 
-bool YBCIsSupportedSingleRowModifyAssignExpr(Expr *expr,
-                                             AttrNumber target_attno,
-                                             bool *needs_pushdown);
-
 bool YBCIsSingleRowModify(PlannedStmt *pstmt);
 
 bool YBCIsSingleRowUpdateOrDelete(ModifyTable *modifyTable);

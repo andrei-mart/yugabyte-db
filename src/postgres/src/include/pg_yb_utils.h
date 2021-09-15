@@ -536,12 +536,12 @@ bool IsYbFdwUser(Oid member);
  * statement, they will not cause the actual modify statement to become a
  * cross shard operation.
  */
-extern const uint32 yb_funcs_safe_for_modify_fast_path[];
+extern const uint32 yb_funcs_safe_for_pushdown[];
 
 /*
  * Number of functions in 'yb_funcs_safe_for_modify_fast_path' above.
  */
-extern const int yb_funcs_safe_for_modify_fast_path_count;
+extern const int yb_funcs_safe_for_pushdown_count;
 
 /** 
  * Use the YB_PG_PDEATHSIG environment variable to set the signal to be sent to 

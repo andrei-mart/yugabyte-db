@@ -195,6 +195,70 @@ static Datum evalExpr(YbgExprContext ctx, Expr* expr, bool *is_null)
 			RelabelType *rt = castNode(RelabelType, expr);
 			return evalExpr(ctx, rt->arg, is_null);
 		}
+		case T_NullTest:
+		{
+			NullTest   *nt = castNode(NullTest, expr);
+			bool		arg_is_null;
+			evalExpr(ctx, nt->arg, &arg_is_null);
+			*is_null = false;
+			return (Datum) (nt->nulltesttype == IS_NULL) == arg_is_null;
+		}
+		case T_BoolExpr:
+		{
+			BoolExpr   *be = castNode(BoolExpr, expr);
+			ListCell   *lc;
+			Expr	   *arg;
+			Datum		arg_value;
+			bool		arg_is_null;
+			switch (be->boolop)
+			{
+				case AND_EXPR:
+					*is_null = false;
+					foreach(lc, be->args)
+					{
+						arg = (Expr *) lfirst(lc);
+						arg_value = evalExpr(ctx, arg, &arg_is_null);
+						if (arg_is_null)
+						{
+							*is_null = true;
+						}
+						else if (!arg_value)
+						{
+							*is_null = false;
+							return (Datum) false;
+						}
+					}
+					return *is_null ? (Datum) 0 : (Datum) true;
+				case OR_EXPR:
+					*is_null = false;
+					foreach(lc, be->args)
+					{
+						arg = (Expr *) lfirst(lc);
+						arg_value = evalExpr(ctx, arg, &arg_is_null);
+						if (arg_is_null)
+						{
+							*is_null = true;
+						}
+						else if (arg_value)
+						{
+							*is_null = false;
+							return (Datum) true;
+						}
+					}
+					return *is_null ? (Datum) 0 : (Datum) false;
+				case NOT_EXPR:
+					arg = (Expr *) linitial(be->args);
+					arg_value = evalExpr(ctx, arg, is_null);
+					return *is_null ? (Datum) 0 : (Datum) (!arg_value);
+				default:
+					/* Planner should ensure we never get here. */
+					ereport(ERROR,
+						(errcode(ERRCODE_INTERNAL_ERROR), errmsg(
+						"Unsupported boolop received by DocDB")));
+					break;
+			}
+			return true;
+		}
 		case T_Const:
 		{
 			Const* const_expr = castNode(Const, expr);
