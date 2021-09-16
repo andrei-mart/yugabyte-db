@@ -67,12 +67,12 @@ const YBCPgTypeEntity* DocPgGetTypeEntity(YbgTypeDesc pg_type);
 Status DocPgPrepareExpr(const std::string& expr_str,
                         std::vector<DocPgParamDesc> params,
                         const Schema *schema,
-                        std::map<int, const DocPgVarRef>& var_map,
+                        std::map<int, const DocPgVarRef> *var_map,
                         YbgPreparedExpr *expr,
                         DocPgVarRef *ret_type);
 
 Status DocPgPrepareExprCtx(const QLTableRow& table_row,
-                           std::map<int, const DocPgVarRef>& var_map,
+                           const std::map<int, const DocPgVarRef>& var_map,
                            YbgExprContext *expr_ctx);
 
 Status DocPgEvalExpr(YbgPreparedExpr expr,

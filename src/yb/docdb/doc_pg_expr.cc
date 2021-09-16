@@ -45,7 +45,7 @@ class DocPgExprExecutor::Private {
       params.emplace_back(attno, typid, typmod);
     }
     YbgPreparedExpr expr;
-    RETURN_NOT_OK(DocPgPrepareExpr(expr_str, params, schema, var_map_, &expr, nullptr));
+    RETURN_NOT_OK(DocPgPrepareExpr(expr_str, params, schema, &var_map_, &expr, nullptr));
     where_clause_.push_back(expr);
     YbgSetCurrentMemoryContext(old, nullptr);
     return Status::OK();

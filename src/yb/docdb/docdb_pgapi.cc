@@ -96,7 +96,7 @@ const YBCPgTypeEntity* DocPgGetTypeEntity(YbgTypeDesc pg_type) {
 Status DocPgPrepareExpr(const std::string& expr_str,
                         std::vector<DocPgParamDesc> params,
                         const Schema *schema,
-                        std::map<int, const DocPgVarRef>& var_map,
+                        std::map<int, const DocPgVarRef> *var_map,
                         YbgPreparedExpr *expr,
                         DocPgVarRef *ret_type) {
   char *expr_cstring = const_cast<char *>(expr_str.c_str());
@@ -110,7 +110,7 @@ Status DocPgPrepareExpr(const std::string& expr_str,
     auto column = schema->column_by_id(col_id);
     SCHECK(column.ok(), InternalError, "Invalid Schema");
     int32_t attno = column->order();
-    if (var_map.find(attno) != var_map.end()) {
+    if (var_map->find(attno) != var_map->end()) {
       VLOG(1) << "Attribute " << attno << " is already processed";
       continue;
     }
@@ -119,9 +119,9 @@ Status DocPgPrepareExpr(const std::string& expr_str,
       if (attno == params[i].attno) {
         YbgTypeDesc pg_arg_type = {params[i].typid, params[i].typmod};
         const YBCPgTypeEntity *arg_type = DocPgGetTypeEntity(pg_arg_type);
-        var_map.emplace(std::piecewise_construct,
-                        std::forward_as_tuple(attno),
-                        std::forward_as_tuple(col_id.rep(), arg_type, params[i].typmod));
+        var_map->emplace(std::piecewise_construct,
+                         std::forward_as_tuple(attno),
+                         std::forward_as_tuple(col_id.rep(), arg_type, params[i].typmod));
         VLOG(1) << "Attribute " << attno << " has been processed";
         found = true;
         break;
@@ -132,7 +132,7 @@ Status DocPgPrepareExpr(const std::string& expr_str,
       VLOG(1) << "Attribute " << attno << " is not referenced";
     }
   }
-  VLOG(1) << "Total attributes referenced: " << var_map.size();
+  VLOG(1) << "Total attributes referenced: " << var_map->size();
 
   if (ret_type != nullptr) {
     YbgTypeDesc pg_arg_type = {params[0].typid, params[0].typmod};
@@ -144,7 +144,7 @@ Status DocPgPrepareExpr(const std::string& expr_str,
 }
 
 Status DocPgPrepareExprCtx(const QLTableRow& table_row,
-                           std::map<int, const DocPgVarRef>& var_map,
+                           const std::map<int, const DocPgVarRef>& var_map,
                            YbgExprContext *expr_ctx) {
   if (var_map.empty()) {
     return Status::OK();

@@ -279,7 +279,7 @@ CHECKED_STATUS DocExprExecutor::EvalTSCall(const PgsqlBCallPB& tscall,
       }
 
       YbgPrepareMemoryContext();
-      RETURN_NOT_OK(DocPgPrepareExpr(expr_str, params, schema, var_map, &expr, &res_type));
+      RETURN_NOT_OK(DocPgPrepareExpr(expr_str, params, schema, &var_map, &expr, &res_type));
       VLOG(1) << "Parameter map size: " << var_map.size();
       RETURN_NOT_OK(DocPgPrepareExprCtx(table_row, var_map, &expr_ctx));
       VLOG(1) << "Returned expr context " << expr_ctx;

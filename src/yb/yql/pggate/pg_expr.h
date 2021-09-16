@@ -303,7 +303,7 @@ class PgOperator : public PgExpr {
   // Setup operator expression when constructing statement.
   virtual CHECKED_STATUS PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb);
 
-protected:
+ protected:
   std::vector<PgExpr*> args_;
 
  private:

@@ -15,7 +15,7 @@ namespace docdb {
 
 class DocPgExprExecutor {
  public:
-  DocPgExprExecutor(const Schema *schema) : schema_(schema) {}
+  explicit DocPgExprExecutor(const Schema *schema) : schema_(schema) {}
   virtual ~DocPgExprExecutor() {}
 
   CHECKED_STATUS AddWhereExpression(const PgsqlExpressionPB& ql_expr);
