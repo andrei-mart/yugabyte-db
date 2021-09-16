@@ -152,18 +152,22 @@ bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change)
 	/* If breaking change set the latest breaking version to the same expression. */
 	if (is_breaking_change)
 	{
-		YBExprParamDesc param1, param2;
-		param1.attno = attnum + 1;
-		param1.typid = INT8OID;
-		param1.typmod = 0;
-		param1.collid = InvalidOid;
+		List *params;
+		YbExprParamDesc *param1 = makeNode(YbExprParamDesc);
+		YbExprParamDesc *param2 = makeNode(YbExprParamDesc);
+		param1->attno = attnum + 1;
+		param1->typid = INT8OID;
+		param1->typmod = 0;
+		param1->collid = InvalidOid;
 
-		param2.attno = attnum;
-		param2.typid = INT8OID;
-		param2.typmod = 0;
-		param2.collid = InvalidOid;
+		param2->attno = attnum;
+		param2->typid = INT8OID;
+		param2->typmod = 0;
+		param2->collid = InvalidOid;
+		params = list_make2(param1, param2);
 
-		YBCPgExpr ybc_expr = YBCNewEvalExprCall(update_stmt, (Expr *) expr, list_make2(&param1, &param2));
+		YBCPgExpr ybc_expr = YBCNewEvalExprCall(update_stmt, (Expr *) expr, params);
+		list_free_deep(params);
 		HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum + 1, ybc_expr));
 	}
 

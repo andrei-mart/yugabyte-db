@@ -4856,6 +4856,19 @@ _copyRowBounds(const RowBounds *from)
 	return newnode;
 }
 
+static YbExprParamDesc *
+_copyYbExprParamDesc(const YbExprParamDesc *from)
+{
+	YbExprParamDesc *newnode = makeNode(YbExprParamDesc);
+
+	COPY_SCALAR_FIELD(attno);
+	COPY_SCALAR_FIELD(typid);
+	COPY_SCALAR_FIELD(typmod);
+	COPY_SCALAR_FIELD(collid);
+
+	return newnode;
+}
+
 /*
  * copyObjectImpl -- implementation of copyObject(); see nodes/nodes.h
  *
@@ -5770,6 +5783,10 @@ copyObjectImpl(const void *from)
 
 		case T_RowBounds:
 			retval = _copyRowBounds(from);
+			break;
+
+		case T_YbExprParamDesc:
+			retval = _copyYbExprParamDesc(from);
 			break;
 
 		default:

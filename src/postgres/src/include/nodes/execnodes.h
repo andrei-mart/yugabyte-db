@@ -679,6 +679,15 @@ typedef struct YbPgExecOutParam {
 	int64_t status_code;
 } YbPgExecOutParam;
 
+typedef struct YbExprParamDesc {
+	NodeTag type;
+
+	int32_t attno;
+	int32_t typid;
+	int32_t typmod;
+	int32_t collid;
+} YbExprParamDesc;
+
 
 /* ----------------------------------------------------------------
  *				 Tuple Hash Tables

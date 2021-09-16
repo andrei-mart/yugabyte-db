@@ -35,13 +35,6 @@
 
 #include "yb/yql/pggate/ybc_pggate.h"
 
-typedef struct YBExprParamDesc {
-	int32_t attno;
-	int32_t typid;
-	int32_t typmod;
-	int32_t collid;
-} YBExprParamDesc;
-
 // Construct column reference expression.
 extern YBCPgExpr YBCNewColumnRef(YBCPgStatement ybc_stmt, int16_t attr_num,
 								 int attr_typid, int attr_collation,

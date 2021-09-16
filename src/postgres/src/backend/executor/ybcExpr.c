@@ -268,18 +268,18 @@ bool YbCanPushdownExpr(Expr *pg_expr, List **params)
 			if (params)
 			{
 				ListCell   *lc;
-				YBExprParamDesc *param;
+				YbExprParamDesc *param;
 
 				foreach(lc, *params)
 				{
-					param =	(YBExprParamDesc *) lfirst(lc);
+					param =	(YbExprParamDesc *) lfirst(lc);
 					if (param->attno == attno)
 					{
 						return true;
 					}
 				}
 
-				param =	(YBExprParamDesc *) palloc(sizeof(YBExprParamDesc));
+				param =	makeNode(YbExprParamDesc);
 				param->attno = attno;
 				param->typid = var_expr->vartype;
 				param->typmod = var_expr->vartypmod;
@@ -302,12 +302,17 @@ YBCPgExpr YBCNewEvalSingleParamExprCall(YBCPgStatement ybc_stmt,
 										int32_t typmod,
 										int32_t collid)
 {
-	YBExprParamDesc param;
-	param.attno = attno;
-	param.typid = typid;
-	param.typmod = typmod;
-	param.collid = collid;
-	return YBCNewEvalExprCall(ybc_stmt, pg_expr, list_make1(&param));
+	YBCPgExpr		expr;
+	List		   *params;
+	YbExprParamDesc *param = makeNode(YbExprParamDesc);
+	param->attno = attno;
+	param->typid = typid;
+	param->typmod = typmod;
+	param->collid = collid;
+	params = list_make1(param);
+	expr = YBCNewEvalExprCall(ybc_stmt, pg_expr, params);
+	list_free_deep(params);
+	return expr;
 }
 
 /*
@@ -320,7 +325,7 @@ YBCPgExpr YBCNewEvalExprCall(YBCPgStatement ybc_stmt,
 {
 	ListCell *lc;
 	YBCPgExpr ybc_expr = NULL;
-	YBExprParamDesc *param = (YBExprParamDesc *) linitial(params);
+	YbExprParamDesc *param = (YbExprParamDesc *) linitial(params);
 	const YBCPgTypeEntity *type_ent = YbDataTypeFromOidMod(InvalidAttrNumber, param->typid);
 	YBCPgCollationInfo collation_info;
 	YBGetCollationInfo(param->collid, type_ent, 0 /* Datum */, true /* is_null */,
@@ -338,7 +343,7 @@ YBCPgExpr YBCNewEvalExprCall(YBCPgStatement ybc_stmt,
 	 * TODO(mihnea): Eventually DocDB should know the full YSQL/PG types and we can remove this.
 	 */
 	foreach(lc, params) {
-		param = (YBExprParamDesc *) lfirst(lc);
+		param = (YbExprParamDesc *) lfirst(lc);
 		Datum attno = Int32GetDatum(param->attno);
 		YBCPgExpr attno_expr = YBCNewConstant(ybc_stmt, INT4OID, InvalidOid, attno, false);
 		YBCPgOperatorAppendArg(ybc_expr, attno_expr);
