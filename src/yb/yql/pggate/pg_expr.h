@@ -189,6 +189,10 @@ class PgExpr {
   // Get expression type.
   InternalType internal_type() const;
 
+  int get_pg_typid() const;
+  int get_pg_typmod() const;
+  int get_pg_collid() const;
+
   // Find opcode.
   static CHECKED_STATUS CheckOperatorName(const char *name);
   static Opcode NameToOpcode(const char *name);
@@ -308,22 +312,6 @@ class PgOperator : public PgExpr {
 
  private:
   const std::string opname_;
-};
-
-class PgEvalExpr : public PgOperator {
- public:
-  // Public types.
-  typedef std::shared_ptr<PgEvalExpr> SharedPtr;
-  typedef std::shared_ptr<const PgEvalExpr> SharedPtrConst;
-
-  typedef std::unique_ptr<PgEvalExpr> UniPtr;
-  typedef std::unique_ptr<const PgEvalExpr> UniPtrConst;
-
-  PgEvalExpr(const YBCPgTypeEntity *type_entity, bool collate_is_valid_non_c)
-    : PgOperator("eval_expr_call", type_entity, collate_is_valid_non_c) {}
-
-  // Setup operator expression when constructing statement.
-  virtual CHECKED_STATUS PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb);
 };
 
 }  // namespace pggate

@@ -334,6 +334,8 @@ class PgApiImpl {
 
   CHECKED_STATUS DmlAppendQual(PgStatement *handle, PgExpr *expr);
 
+  CHECKED_STATUS DmlAppendColumnRef(PgStatement *handle, PgExpr *colref);
+
   // Binding Columns: Bind column with a value (expression) in a statement.
   // + This API is used to identify the rows you want to operate on. If binding columns are not
   //   there, that means you want to operate on all rows (full scan). You can view this as a
@@ -527,10 +529,6 @@ class PgApiImpl {
       PgStatement *stmt, const char *opname, const YBCPgTypeEntity *type_entity,
       bool collate_is_valid_non_c, PgExpr **op_handle);
   CHECKED_STATUS OperatorAppendArg(PgExpr *op_handle, PgExpr *arg);
-  CHECKED_STATUS NewEvalExpr(PgStatement *stmt,
-                             const YBCPgTypeEntity *type_entity,
-                             bool collate_is_valid_non_c,
-                             PgExpr **op_handle);
 
   // Foreign key reference caching.
   void DeleteForeignKeyReference(PgOid table_id, const Slice& ybctid);

@@ -403,6 +403,18 @@ InternalType PgExpr::internal_type() const {
       QLType::Create(static_cast<DataType>(type_entity_->yb_type)));
 }
 
+int PgExpr::get_pg_typid() const {
+  return type_entity_->type_oid;
+}
+
+int PgExpr::get_pg_typmod() const {
+  return type_attrs_.typmod;
+}
+
+int PgExpr::get_pg_collid() const {
+  return 0;  /* InvalidOid */
+}
+
 void PgExpr::InitializeTranslateData() {
   switch (type_entity_->yb_type) {
     case YB_YQL_DATA_TYPE_INT8:
@@ -807,22 +819,6 @@ Status PgOperator::PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
     PgsqlExpressionPB *op = tscall->add_operands();
     RETURN_NOT_OK(arg->PrepareForRead(pg_stmt, op));
     RETURN_NOT_OK(arg->Eval(op));
-  }
-  return Status::OK();
-}
-
-//--------------------------------------------------------------------------------------------------
-
-Status PgEvalExpr::PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb) {
-  RETURN_NOT_OK(PgOperator::PrepareForRead(pg_stmt, expr_pb));
-  int num_params = (args_.size() - 1) / 3;
-  for (int i = 0; i < num_params; i++) {
-    PgExpr *attnum_expr = args_[3 * i + 1];
-    QLValuePB value;
-    RETURN_NOT_OK(attnum_expr->Eval(&value));
-    if (value.int32_value() != 0) {
-      RETURN_NOT_OK(pg_stmt->PrepareColumnForRead(value.int32_value(), nullptr));
-    }
   }
   return Status::OK();
 }

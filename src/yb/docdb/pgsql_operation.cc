@@ -65,15 +65,16 @@ namespace docdb {
 
 namespace {
 
-CHECKED_STATUS CreateProjection(const Schema& schema,
-                                const PgsqlColumnRefsPB& column_refs,
-                                Schema* projection) {
+CHECKED_STATUS CreateProjection(
+    const Schema& schema,
+    const google::protobuf::RepeatedPtrField<PgsqlColumnRefPB> &column_refs,
+    Schema* projection) {
   // Create projection of non-primary key columns. Primary key columns are implicitly read by DocDB.
   // It will also sort the columns before scanning.
   vector<ColumnId> column_ids;
-  column_ids.reserve(column_refs.ids_size());
-  for (int32_t id : column_refs.ids()) {
-    const ColumnId column_id(id);
+  column_ids.reserve(column_refs.size());
+  for (const PgsqlColumnRefPB column_ref : column_refs) {
+    const ColumnId column_id(column_ref.column_id());
     if (!schema.is_key_column(column_id)) {
       column_ids.emplace_back(column_id);
     }
@@ -374,7 +375,7 @@ Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
 
     case PgsqlWriteRequestPB::PGSQL_UPSERT: {
       // Upserts should not have column refs (i.e. require read).
-      RSTATUS_DCHECK(!request_.has_column_refs() || request_.column_refs().ids().empty(),
+      RSTATUS_DCHECK(request_.column_refs().empty(),
               IllegalState,
               "Upsert operation should not have column references");
       return ApplyInsert(data, IsUpsert::kTrue);
@@ -903,6 +904,7 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
   Schema index_projection;
   YQLRowwiseIteratorIf *iter;
   const Schema* scan_schema;
+  DocPgExprExecutor expr_exec(&schema);
 
   RETURN_NOT_OK(CreateProjection(schema, request_.column_refs(), &projection));
   table_iter_ = VERIFY_RESULT(CreateIterator(
@@ -924,14 +926,16 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
   } else {
     iter = table_iter_.get();
     scan_schema = &schema;
+    for (const PgsqlColumnRefPB& column_ref : request_.column_refs()) {
+      RETURN_NOT_OK(expr_exec.AddColumnRef(column_ref));
+      VLOG(1) << "Added column reference to the executor";
+    }
+    for (const PgsqlExpressionPB& expr : request_.where_expr()) {
+      RETURN_NOT_OK(expr_exec.AddWhereExpression(expr));
+      VLOG(1) << "Added where expression to the executor";
+    }
   }
 
-  VLOG(1) << "Initialized iterator";
-  DocPgExprExecutor expr_exec(scan_schema);
-  for (const PgsqlExpressionPB& expr : request_.where_expr()) {
-    RETURN_NOT_OK(expr_exec.AddWhereExpression(expr));
-    VLOG(1) << "Added where expression to the executor";
-  }
   VLOG(1) << "Started iterator";
 
   // Set scan start time.

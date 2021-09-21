@@ -40,6 +40,9 @@ class PgDml : public PgStatement {
   // Append a filter condition.
   CHECKED_STATUS AppendQual(PgExpr *qual);
 
+  // Append a filter condition.
+  CHECKED_STATUS AppendColumnRef(PgExpr *colref);
+
   // Prepare column for both ends.
   // - Prepare protobuf to communicate with DocDB.
   // - Prepare PgExpr to send data back to Postgres layer.
@@ -110,9 +113,6 @@ class PgDml : public PgStatement {
   // Specify target of the query in protobuf request.
   CHECKED_STATUS AppendTargetPB(PgExpr *target);
 
-  // Specify qual of the query in protobuf request.
-  CHECKED_STATUS AppendQualPB(PgExpr *qual);
-
   // Update bind values.
   CHECKED_STATUS UpdateBindPBs();
 
@@ -120,7 +120,9 @@ class PgDml : public PgStatement {
   CHECKED_STATUS UpdateAssignPBs();
 
   // Indicate in the protobuf what columns must be read before the statement is processed.
-  void ColumnRefsToPB(PgsqlColumnRefsPB *column_refs);
+  void ColumnRefsToPB();
+
+  virtual PgsqlColumnRefPB *AllocColumnRefPB() = 0;
 
   // -----------------------------------------------------------------------------------------------
   // Data members that define the DML statement.

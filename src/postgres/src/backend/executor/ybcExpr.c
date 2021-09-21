@@ -191,7 +191,7 @@ bool YbCanPushdownExpr(Expr *pg_expr, List **params)
 		case T_OpExpr:
 		{
 			Oid				funcid;
-			List		   *args = NIL;
+			List		   *args;
 			ListCell	   *lc;
 
 			/* Get the (underlying) function info. */
@@ -201,7 +201,7 @@ bool YbCanPushdownExpr(Expr *pg_expr, List **params)
 				funcid = func_expr->funcid;
 				args = func_expr->args;
 			}
-			else if (IsA(pg_expr, OpExpr))
+			else /* IsA(pg_expr, OpExpr) */
 			{
 				OpExpr *op_expr = castNode(OpExpr, pg_expr);
 				funcid = op_expr->opfuncid;
@@ -330,7 +330,7 @@ YBCPgExpr YBCNewEvalExprCall(YBCPgStatement ybc_stmt,
 	YBCPgCollationInfo collation_info;
 	YBGetCollationInfo(param->collid, type_ent, 0 /* Datum */, true /* is_null */,
 					   &collation_info);
-	YBCPgNewEvalExpr(ybc_stmt, type_ent, collation_info.collate_is_valid_non_c, &ybc_expr);
+	YBCPgNewOperator(ybc_stmt, "eval_expr_call", type_ent, collation_info.collate_is_valid_non_c, &ybc_expr);
 
 	Datum expr_datum = CStringGetDatum(nodeToString(pg_expr));
 	YBCPgExpr expr = YBCNewConstant(ybc_stmt, CSTRINGOID, C_COLLATION_OID,

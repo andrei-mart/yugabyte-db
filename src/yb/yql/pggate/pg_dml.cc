@@ -97,12 +97,6 @@ Status PgDml::AppendTargetPB(PgExpr *target) {
 }
 
 Status PgDml::AppendQual(PgExpr *qual) {
-  RETURN_NOT_OK(AppendQualPB(qual));
-
-  return Status::OK();
-}
-
-Status PgDml::AppendQualPB(PgExpr *qual) {
   // Append to quals_.
   quals_.push_back(qual);
 
@@ -119,6 +113,19 @@ Status PgDml::AppendQualPB(PgExpr *qual) {
   // - Bind values for a target of SELECT
   //   SELECT AVG(col + ?) FROM a_table;
   // expr_binds_[expr_pb] = qual;
+  return Status::OK();
+}
+
+Status PgDml::AppendColumnRef(PgExpr *colref) {
+  DCHECK(colref->is_colref()) << "Colref is expected";
+  int attr_num = static_cast<PgColumnRef *>(colref)->attr_num();
+  PgColumn& col = VERIFY_RESULT(target_.ColumnForAttr(attr_num));
+  if (!col.is_virtual_column()) {
+    col.set_pg_type_info(colref->get_pg_typid(),
+                            colref->get_pg_typmod(),
+                            colref->get_pg_collid());
+    col.set_read_requested(true);
+  }
   return Status::OK();
 }
 
@@ -151,11 +158,18 @@ Status PgDml::PrepareColumnForWrite(PgColumn *pg_col, PgsqlExpressionPB *assign_
   return Status::OK();
 }
 
-void PgDml::ColumnRefsToPB(PgsqlColumnRefsPB *column_refs) {
-  column_refs->Clear();
+void PgDml::ColumnRefsToPB() {
   for (const PgColumn& col : target_.columns()) {
     if (col.read_requested() || col.write_requested()) {
-      column_refs->add_ids(col.id());
+      // assert(col.attr_num() > 0);
+      PgsqlColumnRefPB *column_ref = AllocColumnRefPB();
+      column_ref->set_column_id(col.id());
+      column_ref->set_attno(col.attr_num());
+      if (col.has_pg_type_info()) {
+        column_ref->set_typid(col.pg_typid());
+        column_ref->set_typmod(col.pg_typmod());
+        column_ref->set_collid(col.pg_collid());
+      }
     }
   }
 }

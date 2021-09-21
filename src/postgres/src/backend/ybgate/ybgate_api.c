@@ -18,7 +18,6 @@
 
 #include "ybgate/ybgate_api.h"
 
-#include "catalog/pg_collation_d.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_type_d.h"
 #include "catalog/yb_type.h"
@@ -143,9 +142,10 @@ static Datum evalExpr(YbgExprContext ctx, Expr* expr, bool *is_null)
 		case T_FuncExpr:
 		case T_OpExpr:
 		{
-			Oid          funcid = InvalidOid;
-			List         *args = NULL;
-			ListCell     *lc = NULL;
+			Oid			funcid;
+			Oid			inputcollid;
+			List	   *args;
+			ListCell   *lc;
 
 			/* Get the (underlying) function info. */
 			if (IsA(expr, FuncExpr))
@@ -153,12 +153,14 @@ static Datum evalExpr(YbgExprContext ctx, Expr* expr, bool *is_null)
 				FuncExpr *func_expr = castNode(FuncExpr, expr);
 				args = func_expr->args;
 				funcid = func_expr->funcid;
+				inputcollid = func_expr->inputcollid;
 			}
-			else if (IsA(expr, OpExpr))
+			else /* (IsA(expr, OpExpr)) */
 			{
 				OpExpr *op_expr = castNode(OpExpr, expr);
 				args = op_expr->args;
 				funcid = op_expr->opfuncid;
+				inputcollid = op_expr->inputcollid;
 			}
 
 			FmgrInfo *flinfo = palloc0(sizeof(FmgrInfo));
@@ -168,7 +170,7 @@ static Datum evalExpr(YbgExprContext ctx, Expr* expr, bool *is_null)
 			InitFunctionCallInfoData(fcinfo,
 									 flinfo,
 									 args->length,
-									 DEFAULT_COLLATION_OID,
+									 inputcollid,
 									 NULL,
 									 NULL);
 			int i = 0;

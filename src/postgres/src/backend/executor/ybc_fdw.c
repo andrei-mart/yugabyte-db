@@ -534,7 +534,7 @@ ybSetupScanQual(ForeignScanState *node)
 	param->typid = BOOLOID;
 	param->typmod = -1;
 	param->collid = InvalidOid;
-	params = lcons(param, params);
+	params = list_make1(param);
 
 	foreach(lc, qual)
 	{
@@ -543,8 +543,36 @@ ybSetupScanQual(ForeignScanState *node)
 		YBCPgExpr yb_expr = YBCNewEvalExprCall(yb_state->handle, expr, params);
 		HandleYBStatus(YbPgDmlAppendQual(yb_state->handle, yb_expr));
 	}
-	list_free(params);
-	pfree(param);
+	list_free_deep(params);
+
+	MemoryContextSwitchTo(oldcontext);
+}
+
+/*
+ * Setup the scan targets (either columns or aggregates).
+ */
+static void
+ybSetupScanColumnRefs(ForeignScanState *node)
+{
+	ForeignScan *foreignScan = (ForeignScan *) node->ss.ps.plan;
+	YbFdwExecState *yb_state = (YbFdwExecState *) node->fdw_state;
+	List	   *params = foreignScan->fdw_private;
+	ListCell   *lc;
+
+	MemoryContext oldcontext =
+		MemoryContextSwitchTo(node->ss.ps.ps_ExprContext->ecxt_per_query_memory);
+
+	foreach(lc, params)
+	{
+		YbExprParamDesc *param = (YbExprParamDesc *) lfirst(lc);
+		YBCPgTypeAttrs type_attrs = { param->typmod };
+		YBCPgExpr yb_expr = YBCNewColumnRef(yb_state->handle,
+											param->attno,
+											param->typid,
+											param->collid,
+											&type_attrs);
+		HandleYBStatus(YbPgDmlAppendColumnRef(yb_state->handle, yb_expr));
+	}
 
 	MemoryContextSwitchTo(oldcontext);
 }
@@ -570,6 +598,7 @@ ybcIterateForeignScan(ForeignScanState *node)
 	if (!ybc_state->is_exec_done) {
 		ybcSetupScanTargets(node);
 		ybSetupScanQual(node);
+		ybSetupScanColumnRefs(node);
 		HandleYBStatus(YBCPgExecSelect(ybc_state->handle, ybc_state->exec_params));
 		ybc_state->is_exec_done = true;
 	}

@@ -130,7 +130,7 @@ Status PgDmlWrite::Exec(bool force_non_bufferable) {
   RETURN_NOT_OK(doc_op_->ExecuteInit(nullptr));
 
   // Set column references in protobuf.
-  ColumnRefsToPB(write_req_->mutable_column_refs());
+  ColumnRefsToPB();
 
   // Execute the statement. If the request has been sent, get the result and handle any rows
   // returned.
@@ -173,6 +173,10 @@ PgsqlExpressionPB *PgDmlWrite::AllocTargetPB() {
 PgsqlExpressionPB *PgDmlWrite::AllocQualPB() {
   LOG(FATAL) << "Pure virtual function is being call";
   return nullptr;
+}
+
+PgsqlColumnRefPB *PgDmlWrite::AllocColumnRefPB() {
+  return write_req_->add_column_refs();
 }
 
 }  // namespace pggate

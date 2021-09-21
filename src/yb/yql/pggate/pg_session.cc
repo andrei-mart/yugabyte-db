@@ -678,9 +678,9 @@ Status PgSession::UpdateSequenceTuple(int64_t db_oid,
     where_pb->set_op(QL_OP_EXISTS);
   }
 
-  write_request->mutable_column_refs()->add_ids(
+  write_request->add_column_refs()->set_column_id(
       t->schema().column_id(kPgSequenceLastValueColIdx));
-  write_request->mutable_column_refs()->add_ids(
+  write_request->add_column_refs()->set_column_id(
       t->schema().column_id(kPgSequenceIsCalledColIdx));
 
   RETURN_NOT_OK(session_->ApplyAndFlush(psql_write));
@@ -711,9 +711,9 @@ Status PgSession::ReadSequenceTuple(int64_t db_oid,
   read_request->add_targets()->set_column_id(
       t->schema().column_id(kPgSequenceIsCalledColIdx));
 
-  read_request->mutable_column_refs()->add_ids(
+  read_request->add_column_refs()->set_column_id(
       t->schema().column_id(kPgSequenceLastValueColIdx));
-  read_request->mutable_column_refs()->add_ids(
+  read_request->add_column_refs()->set_column_id(
       t->schema().column_id(kPgSequenceIsCalledColIdx));
 
   RETURN_NOT_OK(session_->ReadSync(psql_read));

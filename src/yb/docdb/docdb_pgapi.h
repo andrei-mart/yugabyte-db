@@ -71,6 +71,17 @@ Status DocPgPrepareExpr(const std::string& expr_str,
                         YbgPreparedExpr *expr,
                         DocPgVarRef *ret_type);
 
+Status DocPgPrepareExprParams(std::vector<DocPgParamDesc> params,
+                              const Schema *schema,
+                              std::map<int, const DocPgVarRef> *var_map);
+
+Status DocPgAddVarRef(const ColumnId& column_id,
+                      int32_t attno,
+                      int32_t typid,
+                      int32_t typmod,
+                      int32_t collid,
+                      std::map<int, const DocPgVarRef> *var_map);
+
 Status DocPgPrepareExprCtx(const QLTableRow& table_row,
                            const std::map<int, const DocPgVarRef>& var_map,
                            YbgExprContext *expr_ctx);

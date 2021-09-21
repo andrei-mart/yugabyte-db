@@ -2538,6 +2538,9 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	*result_tlist = NIL;
 	Bitmapset *update_attrs = NULL;
 
+	/* For update, SET clause attrs whose RHS value to be evaluated by DocDB */
+	Bitmapset *pushdown_update_attrs = NULL;
+
 	/* Verify YB is enabled. */
 	if (!IsYugaByteEnabled())
 		return false;
@@ -2646,7 +2649,8 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		 */
 		foreach(values, build_path_tlist(subroot, subpath))
 		{
-			TargetEntry *tle;
+			TargetEntry	   *tle;
+			List		   *params = NIL;
 
 			tle = lfirst_node(TargetEntry, values);
 
@@ -2668,8 +2672,9 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 			}
 
 			/* Verify expression is supported. */
-			if (!YbCanPushdownExpr(tle->expr, NULL))
+			if (!YbCanPushdownExpr(tle->expr, &params))
 			{
+				list_free_deep(params);
 				RelationClose(relation);
 				return false;
 			}
@@ -2700,6 +2705,13 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 			{
 				RelationClose(relation);
 				return false;
+			}
+
+			if (params)
+			{
+				pushdown_update_attrs = bms_add_member(
+					pushdown_update_attrs, tle->resno - attr_offset);
+				list_free_deep(params);
 			}
 
 			subpath_tlist = lappend(subpath_tlist, tle);
@@ -2867,8 +2879,9 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		foreach(values, linitial(path->returningLists))
 		{
 			int attr = lfirst_node(TargetEntry, values)->resorigcol - attr_offset;
-			if (!bms_is_member(attr, update_attrs) &&
-				!bms_is_member(attr, primary_key_attrs))
+			if ((!bms_is_member(attr, update_attrs) &&
+				 !bms_is_member(attr, primary_key_attrs)) ||
+				bms_is_member(attr, pushdown_update_attrs))
 			{
 				RelationClose(relation);
 				return false;
@@ -2932,7 +2945,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		}
 		else if (subpath_tlist_values && subpath_tlist_tle->resno == attr_num)
 		{
-			if (bms_is_member(subpath_tlist_tle->resno  - attr_offset, update_attrs))
+			if (bms_is_member(subpath_tlist_tle->resno  - attr_offset, pushdown_update_attrs))
 			{
 				/*
 				 * If the expr needs pushdown bypass query-layer evaluation.

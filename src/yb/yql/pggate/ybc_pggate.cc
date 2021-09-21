@@ -571,6 +571,10 @@ YBCStatus YbPgDmlAppendQual(YBCPgStatement handle, YBCPgExpr qual) {
   return ToYBCStatus(pgapi->DmlAppendQual(handle, qual));
 }
 
+YBCStatus YbPgDmlAppendColumnRef(YBCPgStatement handle, YBCPgExpr colref) {
+  return ToYBCStatus(pgapi->DmlAppendColumnRef(handle, colref));
+}
+
 YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value) {
   return ToYBCStatus(pgapi->DmlBindColumn(handle, attr_num, attr_value));
 }
@@ -829,14 +833,6 @@ YBCStatus YBCPgNewOperator(
     bool collate_is_valid_non_c, YBCPgExpr *op_handle) {
   return ToYBCStatus(pgapi->NewOperator(
       stmt, opname, type_entity, collate_is_valid_non_c, op_handle));
-}
-
-YBCStatus YBCPgNewEvalExpr(YBCPgStatement stmt,
-                           const YBCPgTypeEntity *type_entity,
-                           bool collate_is_valid_non_c,
-                           YBCPgExpr *op_handle) {
-  return ToYBCStatus(pgapi->NewEvalExpr(
-      stmt, type_entity, collate_is_valid_non_c, op_handle));
 }
 
 YBCStatus YBCPgOperatorAppendArg(YBCPgExpr op_handle, YBCPgExpr arg) {

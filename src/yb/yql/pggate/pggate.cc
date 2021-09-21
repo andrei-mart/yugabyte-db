@@ -890,6 +890,10 @@ Status PgApiImpl::DmlAppendQual(PgStatement *handle, PgExpr *qual) {
   return down_cast<PgDml*>(handle)->AppendQual(qual);
 }
 
+Status PgApiImpl::DmlAppendColumnRef(PgStatement *handle, PgExpr *colref) {
+  return down_cast<PgDml*>(handle)->AppendColumnRef(colref);
+}
+
 Status PgApiImpl::DmlBindColumn(PgStatement *handle, int attr_num, PgExpr *attr_value) {
   return down_cast<PgDml*>(handle)->BindColumn(attr_num, attr_value);
 }
@@ -1353,23 +1357,6 @@ Status PgApiImpl::NewOperator(
 
   // Create operator.
   PgExpr::SharedPtr pg_op = make_shared<PgOperator>(opname, type_entity, collate_is_valid_non_c);
-  stmt->AddExpr(pg_op);
-
-  *op_handle = pg_op.get();
-  return Status::OK();
-}
-
-Status PgApiImpl::NewEvalExpr(PgStatement *stmt,
-                              const YBCPgTypeEntity *type_entity,
-                              bool collate_is_valid_non_c,
-                              PgExpr **op_handle) {
-  if (!stmt) {
-    // Invalid handle.
-    return STATUS(InvalidArgument, "Invalid statement handle");
-  }
-
-  // Create operator.
-  PgExpr::SharedPtr pg_op = make_shared<PgEvalExpr>(type_entity, collate_is_valid_non_c);
   stmt->AddExpr(pg_op);
 
   *op_handle = pg_op.get();

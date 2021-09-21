@@ -123,6 +123,10 @@ PgsqlExpressionPB *PgDmlRead::AllocQualPB() {
   return read_req_->add_where_expr();
 }
 
+PgsqlColumnRefPB *PgDmlRead::AllocColumnRefPB() {
+  return read_req_->add_column_refs();
+}
+
 //--------------------------------------------------------------------------------------------------
 // RESULT SET SUPPORT.
 // For now, selected expressions are just a list of column names (ref).
@@ -133,7 +137,7 @@ void PgDmlRead::SetColumnRefs() {
     DCHECK(!has_aggregate_targets()) << "Aggregate pushdown should not happen with index";
   }
   read_req_->set_is_aggregate(has_aggregate_targets());
-  ColumnRefsToPB(read_req_->mutable_column_refs());
+  ColumnRefsToPB();
 }
 
 // Method removes empty primary binds and moves tailing non empty range primary binds

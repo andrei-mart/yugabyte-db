@@ -7,6 +7,7 @@
 #ifndef YB_DOCDB_DOC_PG_EXPR_H_
 #define YB_DOCDB_DOC_PG_EXPR_H_
 
+#include "yb/common/ql_expr.h"
 #include "yb/common/schema.h"
 #include "yb/util/status.h"
 
@@ -17,6 +18,8 @@ class DocPgExprExecutor {
  public:
   explicit DocPgExprExecutor(const Schema *schema) : schema_(schema) {}
   virtual ~DocPgExprExecutor() {}
+
+  CHECKED_STATUS AddColumnRef(const PgsqlColumnRefPB& column_ref);
 
   CHECKED_STATUS AddWhereExpression(const PgsqlExpressionPB& ql_expr);
 

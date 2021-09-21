@@ -70,6 +70,8 @@ class PgDmlWrite : public PgDml {
   // Allocate protobuf for qual.
   PgsqlExpressionPB *AllocQualPB() override;
 
+  PgsqlColumnRefPB *AllocColumnRefPB() override;
+
   // Allocate column expression.
   PgsqlExpressionPB *AllocColumnAssignPB(PgColumn *col) override;
 

@@ -26,6 +26,28 @@ class DocPgExprExecutor::Private {
     VLOG(1) << "Deleted expression memory context";
   }
 
+  CHECKED_STATUS AddColumnRef(const PgsqlColumnRefPB& column_ref,
+                              const Schema *schema) {
+    assert(row_ctx_ == nullptr);
+    ColumnId col_id = ColumnId(column_ref.column_id());
+    if (!column_ref.has_typid()) {
+      VLOG(1) << "Column reference " << col_id << " has no type information, skipping";
+      return Status::OK();
+    }
+    VLOG(1) << "Column lookup " << col_id;
+    auto column = schema->column_by_id(col_id);
+    assert(column.ok());
+    assert(column->order() == column_ref.attno());
+    SCHECK(column.ok(), InternalError, "Invalid Schema");
+    SCHECK_EQ(column->order(), column_ref.attno(), InternalError, "Invalid Schema");
+    return DocPgAddVarRef(col_id,
+                          column_ref.attno(),
+                          column_ref.typid(),
+                          column_ref.has_typmod() ? column_ref.typmod() : -1,
+                          column_ref.has_collid() ? column_ref.collid() : 0,
+                          &var_map_);
+  }
+
   CHECKED_STATUS PreparePgExprCall(const PgsqlExpressionPB& ql_expr,
                                    const Schema *schema) {
     assert(row_ctx_ == nullptr);
@@ -97,6 +119,13 @@ void DocPgExprExecutor::private_deleter::operator()(DocPgExprExecutor::Private* 
 }
 
 //--------------------------------------------------------------------------------------------------
+
+CHECKED_STATUS DocPgExprExecutor::AddColumnRef(const PgsqlColumnRefPB& column_ref) {
+  if (private_.get() == nullptr) {
+    private_.reset(new Private());
+  }
+  return private_->AddColumnRef(column_ref, schema_);
+}
 
 CHECKED_STATUS DocPgExprExecutor::AddWhereExpression(const PgsqlExpressionPB& ql_expr) {
   if (private_.get() == nullptr) {

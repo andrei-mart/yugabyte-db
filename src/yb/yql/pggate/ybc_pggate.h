@@ -291,6 +291,8 @@ YBCStatus YBCPgDmlAppendTarget(YBCPgStatement handle, YBCPgExpr target);
 
 YBCStatus YbPgDmlAppendQual(YBCPgStatement handle, YBCPgExpr qual);
 
+YBCStatus YbPgDmlAppendColumnRef(YBCPgStatement handle, YBCPgExpr colref);
+
 // Binding Columns: Bind column with a value (expression) in a statement.
 // + This API is used to identify the rows you want to operate on. If binding columns are not
 //   there, that means you want to operate on all rows (full scan). You can view this as a
@@ -485,10 +487,6 @@ YBCStatus YBCPgUpdateConstChar(YBCPgExpr expr, const char *value, int64_t bytes,
 YBCStatus YBCPgNewOperator(
     YBCPgStatement stmt, const char *opname, const YBCPgTypeEntity *type_entity,
     bool collate_is_valid_non_c, YBCPgExpr *op_handle);
-YBCStatus YBCPgNewEvalExpr(YBCPgStatement stmt,
-                           const YBCPgTypeEntity *type_entity,
-                           bool collate_is_valid_non_c,
-                           YBCPgExpr *op_handle);
 YBCStatus YBCPgOperatorAppendArg(YBCPgExpr op_handle, YBCPgExpr arg);
 
 YBCStatus YBCGetDocDBKeySize(uint64_t data, const YBCPgTypeEntity *typeentity,
