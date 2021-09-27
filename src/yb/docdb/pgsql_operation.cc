@@ -45,10 +45,18 @@
 
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
+using namespace std::literals;
+
 DECLARE_bool(ysql_disable_index_backfill);
 
-DEFINE_double(ysql_scan_timeout_multiplier, 0.5,
-              "YSQL read scan timeout multipler of retryable_rpc_single_call_timeout_ms.");
+DEFINE_uint64(ysql_scan_deadline_margin_ms, 1000,
+              "Scan deadline is calculated by adding client timeount to the time when the request "
+              "was received. It defines the moment in time when client has definitely timed out "
+              "and if the request is yet in processing after the deadline, it can be canceled. "
+              "Therefore to prevent client timeout, the request handler should return partial "
+              "result and paging information some time before the deadline. That's what the "
+              "ysql_scan_deadline_margin_ms is for. It should account for network and processing "
+              "delays.");
 
 DEFINE_bool(pgsql_consistent_transactional_paging, true,
             "Whether to enforce consistency of data returned for second page and beyond for YSQL "
@@ -802,6 +810,7 @@ Result<size_t> PgsqlReadOperation::ExecuteSample(const YQLStorageIf& ql_storage,
       ql_storage, request_, projection, schema, txn_op_context_,
       deadline, read_time, is_explicit_request_read_time));
   bool scan_time_exceeded = false;
+  CoarseTimePoint stop_scan = deadline - FLAGS_ysql_scan_deadline_margin_ms * 1ms;
   while (scanned_rows++ < row_count_limit &&
          VERIFY_RESULT(table_iter_->HasNext()) &&
          !scan_time_exceeded) {
@@ -833,10 +842,8 @@ Result<size_t> PgsqlReadOperation::ExecuteSample(const YQLStorageIf& ql_storage,
     }
     // Taking tuple ID does not advance the table iterator. Move it now.
     table_iter_->SkipRow();
-    // Periodically check if we are running out of time
-    if (scanned_rows % 1024 == 0) {
-      scan_time_exceeded = CoarseMonoClock::now() >= deadline;
-    }
+    // Check if we are running out of time
+    scan_time_exceeded = CoarseMonoClock::now() >= stop_scan;
   }
   // Count live rows we have scanned TODO how to count dead rows?
   samplerows += (scanned_rows - 1);
@@ -940,10 +947,10 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
 
   // Set scan start time.
   bool scan_time_exceeded = false;
+  CoarseTimePoint stop_scan = deadline - FLAGS_ysql_scan_deadline_margin_ms * 1ms;
 
   // Fetching data.
   int match_count = 0;
-  int row_count = 0;
   QLTableRow row;
   while (fetched_rows < row_count_limit && VERIFY_RESULT(iter->HasNext()) &&
          !scan_time_exceeded) {
@@ -966,12 +973,11 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
       RETURN_NOT_OK(iter->NextRow(projection, &row));
     }
 
-    row_count++;
     // Match the row with the where condition before adding to the row block.
     bool is_match = true;
     RETURN_NOT_OK(expr_exec.ExecWhereExpr(row, &is_match));
     if (is_match) {
-      VLOG(1) << "Found matching row";
+      VLOG(2) << "Found matching row";
       match_count++;
       if (request_.is_aggregate()) {
         RETURN_NOT_OK(EvalAggregate(row));
@@ -981,13 +987,11 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
       }
     }
 
-    // Check every row_count_limit rows whether we've exceeded our scan time.
-    if (row_count >= row_count_limit) {
-      row_count = 0;
-      scan_time_exceeded = CoarseMonoClock::now() >= deadline;
-      VLOG(1) << "Deadline is " << (scan_time_exceeded ? "" : "not ") << "exceeded";
-    }
+    scan_time_exceeded = CoarseMonoClock::now() >= stop_scan;
   }
+
+  VLOG(1) << "Stopped iterator after " << fetched_rows << " rows fetched";
+  VLOG(1) << "Deadline is " << (scan_time_exceeded ? "" : "not ") << "exceeded";
 
   if (request_.is_aggregate() && match_count > 0) {
     RETURN_NOT_OK(PopulateAggregate(row, result_buffer));
