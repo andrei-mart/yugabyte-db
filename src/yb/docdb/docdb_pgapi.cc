@@ -142,7 +142,7 @@ Status DocPgPrepareExprParams(std::vector<DocPgParamDesc> params,
     int32_t attno = column->order();
     for (int i = 0; i < params.size(); i++) {
       if (attno == params[i].attno) {
-        DocPgAddVarRef(col_id, attno, params[i].typid, params[i].typmod, 0, var_map);
+        RETURN_NOT_OK(DocPgAddVarRef(col_id, attno, params[i].typid, params[i].typmod, 0, var_map));
         found = true;
         break;
       }
