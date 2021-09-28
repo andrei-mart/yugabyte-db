@@ -401,6 +401,12 @@ extern bool yb_enable_create_with_table_oid;
  */
 extern int yb_index_state_flags_update_delay;
 
+/*
+ * Enables expression pushdown.
+ * If true, planner sends supported expressions to DocDB for evaluation
+ */
+extern bool yb_enable_expression_pushdown;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;

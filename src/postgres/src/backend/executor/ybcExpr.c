@@ -185,6 +185,9 @@ bool yb_can_pushdown_func(Oid funcid)
 
 bool YbCanPushdownExpr(Expr *pg_expr, List **params)
 {
+	if (!yb_enable_expression_pushdown)
+		return false;
+
 	switch (pg_expr->type)
 	{
 		case T_FuncExpr:
