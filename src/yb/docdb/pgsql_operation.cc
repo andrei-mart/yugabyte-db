@@ -81,7 +81,7 @@ CHECKED_STATUS CreateProjection(
   // It will also sort the columns before scanning.
   vector<ColumnId> column_ids;
   column_ids.reserve(column_refs.size());
-  for (const PgsqlColumnRefPB column_ref : column_refs) {
+  for (const PgsqlColumnRefPB& column_ref : column_refs) {
     const ColumnId column_id(column_ref.column_id());
     if (!schema.is_key_column(column_id)) {
       column_ids.emplace_back(column_id);
