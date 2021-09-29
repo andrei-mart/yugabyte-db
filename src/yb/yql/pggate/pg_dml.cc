@@ -159,6 +159,7 @@ Status PgDml::PrepareColumnForWrite(PgColumn *pg_col, PgsqlExpressionPB *assign_
 }
 
 void PgDml::ColumnRefsToPB() {
+  ClearColumnRefPBs();
   for (const PgColumn& col : target_.columns()) {
     if (col.read_requested() || col.write_requested()) {
       // assert(col.attr_num() > 0);

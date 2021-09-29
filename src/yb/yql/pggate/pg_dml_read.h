@@ -93,6 +93,8 @@ class PgDmlRead : public PgDml {
 
   PgsqlColumnRefPB *AllocColumnRefPB() override;
 
+  void ClearColumnRefPBs() override;
+
   // Allocate column expression.
   PgsqlExpressionPB *AllocColumnAssignPB(PgColumn *col) override;
 

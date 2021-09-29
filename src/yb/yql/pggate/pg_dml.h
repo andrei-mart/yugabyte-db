@@ -124,6 +124,8 @@ class PgDml : public PgStatement {
 
   virtual PgsqlColumnRefPB *AllocColumnRefPB() = 0;
 
+  virtual void ClearColumnRefPBs() = 0;
+
   // -----------------------------------------------------------------------------------------------
   // Data members that define the DML statement.
 

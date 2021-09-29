@@ -127,6 +127,10 @@ PgsqlColumnRefPB *PgDmlRead::AllocColumnRefPB() {
   return read_req_->add_column_refs();
 }
 
+void PgDmlRead::ClearColumnRefPBs() {
+  read_req_->clear_column_refs();
+}
+
 //--------------------------------------------------------------------------------------------------
 // RESULT SET SUPPORT.
 // For now, selected expressions are just a list of column names (ref).

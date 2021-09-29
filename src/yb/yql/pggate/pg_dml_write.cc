@@ -179,5 +179,9 @@ PgsqlColumnRefPB *PgDmlWrite::AllocColumnRefPB() {
   return write_req_->add_column_refs();
 }
 
+void PgDmlWrite::ClearColumnRefPBs() {
+  write_req_->clear_column_refs();
+}
+
 }  // namespace pggate
 }  // namespace yb
