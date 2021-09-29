@@ -44,6 +44,10 @@
 #include "executor/ybcExpr.h"
 #include "catalog/yb_type.h"
 
+Node *yb_expr_instantiate_params_mutator(Node *node, ParamListInfo paramLI);
+bool yb_pushdown_walker(Node *node, List **params);
+bool yb_can_pushdown_func(Oid funcid);
+
 YBCPgExpr YBCNewColumnRef(YBCPgStatement ybc_stmt, int16_t attr_num,
 						  int attr_typid, int attr_collation,
 						  const YBCPgTypeAttrs *type_attrs) {
@@ -183,90 +187,23 @@ bool yb_can_pushdown_func(Oid funcid)
 	return true;
 }
 
-bool YbCanPushdownExpr(Expr *pg_expr, List **params)
+bool yb_pushdown_walker(Node *node, List **params)
 {
-	if (!yb_enable_expression_pushdown)
+	if (node == NULL)
 		return false;
-
-	switch (pg_expr->type)
+	switch (node->type)
 	{
-		case T_FuncExpr:
-		case T_OpExpr:
-		{
-			Oid				funcid;
-			List		   *args;
-			ListCell	   *lc;
-
-			/* Get the (underlying) function info. */
-			if (IsA(pg_expr, FuncExpr))
-			{
-				FuncExpr *func_expr = castNode(FuncExpr, pg_expr);
-				funcid = func_expr->funcid;
-				args = func_expr->args;
-			}
-			else /* IsA(pg_expr, OpExpr) */
-			{
-				OpExpr *op_expr = castNode(OpExpr, pg_expr);
-				funcid = op_expr->opfuncid;
-				args = op_expr->args;
-			}
-
-			if (!yb_can_pushdown_func(funcid))
-			{
-				return false;
-			}
-
-			foreach(lc, args)
-			{
-				Expr *arg = (Expr *) lfirst(lc);
-				if (!YbCanPushdownExpr(arg, params))
-				{
-					return false;
-				}
-			}
-			return true;
-		}
-		case T_RelabelType:
-		{
-			RelabelType *rt = castNode(RelabelType, pg_expr);
-			return YbCanPushdownExpr(rt->arg, params);
-		}
-		case T_NullTest:
-		{
-			NullTest *nt = castNode(NullTest, pg_expr);
-			return !nt->argisrow && YbCanPushdownExpr(nt->arg, params);
-		}
-		case T_BoolExpr:
-		{
-			BoolExpr *be = castNode(BoolExpr, pg_expr);
-			ListCell *lc;
-			foreach(lc, be->args)
-			{
-				Expr *arg = (Expr *) lfirst(lc);
-				if (!YbCanPushdownExpr(arg, params))
-				{
-					return false;
-				}
-			}
-			return true;
-		}
-		case T_Const:
-		{
-			return true;
-		}
-		case T_Param:
-		{
-			Param *p = castNode(Param, pg_expr);
-			return p->paramkind == PARAM_EXTERN &&
-					YBCPgFindTypeEntity(p->paramtype);
-		}
 		case T_Var:
 		{
-			Var		   *var_expr = castNode(Var, pg_expr);
+			Var		   *var_expr = castNode(Var, node);
 			AttrNumber	attno = var_expr->varattno;
+			if (!AttrNumberIsForUserDefinedAttr(attno))
+			{
+				return true;
+			}
 			if (!YBCPgFindTypeEntity(var_expr->vartype))
 			{
-				return false;
+				return true;
 			}
 			if (params)
 			{
@@ -278,7 +215,7 @@ bool YbCanPushdownExpr(Expr *pg_expr, List **params)
 					param =	(YbExprParamDesc *) lfirst(lc);
 					if (param->attno == attno)
 					{
-						return true;
+						break;
 					}
 				}
 
@@ -289,13 +226,51 @@ bool YbCanPushdownExpr(Expr *pg_expr, List **params)
 				param->collid = var_expr->varcollid;
 				*params = lappend(*params, param);
 			}
-			return true;
+			break;
 		}
-		default:
+		case T_FuncExpr:
 		{
-			return false;
+			FuncExpr *func_expr = castNode(FuncExpr, node);
+			if (!yb_can_pushdown_func(func_expr->funcid))
+			{
+				return true;
+			}
+			break;
 		}
+		case T_OpExpr:
+		{
+			OpExpr *op_expr = castNode(OpExpr, node);
+			if (!yb_can_pushdown_func(op_expr->opfuncid))
+			{
+				return true;
+			}
+			break;
+		}
+		case T_Param:
+		{
+			Param *p = castNode(Param, node);
+			if (p->paramkind != PARAM_EXTERN ||
+					!YBCPgFindTypeEntity(p->paramtype))
+				return true;
+			break;
+		}
+		case T_RelabelType:
+		case T_NullTest:
+		case T_Const:
+		case T_BoolExpr:
+			break;
+		default:
+			return true;
 	}
+	return expression_tree_walker(node, yb_pushdown_walker, (void *) params);
+}
+
+bool YbCanPushdownExpr(Expr *pg_expr, List **params)
+{
+	if (!yb_enable_expression_pushdown)
+		return false;
+
+	return !yb_pushdown_walker((Node *) pg_expr, params);
 }
 
 YBCPgExpr YBCNewEvalSingleParamExprCall(YBCPgStatement ybc_stmt,
