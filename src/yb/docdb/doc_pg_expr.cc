@@ -26,7 +26,7 @@ class DocPgExprExecutor::Private {
     VLOG(1) << "Deleted expression memory context";
   }
 
-  CHECKED_STATUS AddColumnRef(const PgsqlColumnRefPB& column_ref,
+  CHECKED_STATUS AddColumnRef(const PgsqlColRefPB& column_ref,
                               const Schema *schema) {
     assert(row_ctx_ == nullptr);
     ColumnId col_id = ColumnId(column_ref.column_id());
@@ -120,7 +120,7 @@ void DocPgExprExecutor::private_deleter::operator()(DocPgExprExecutor::Private* 
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS DocPgExprExecutor::AddColumnRef(const PgsqlColumnRefPB& column_ref) {
+CHECKED_STATUS DocPgExprExecutor::AddColumnRef(const PgsqlColRefPB& column_ref) {
   if (private_.get() == nullptr) {
     private_.reset(new Private());
   }

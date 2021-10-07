@@ -158,18 +158,27 @@ Status PgDml::PrepareColumnForWrite(PgColumn *pg_col, PgsqlExpressionPB *assign_
   return Status::OK();
 }
 
-void PgDml::ColumnRefsToPB() {
-  ClearColumnRefPBs();
+void PgDml::ColumnRefsToPB(PgsqlColumnRefsPB *column_refs) {
+  column_refs->Clear();
+  for (const PgColumn& col : target_.columns()) {
+    if (col.read_requested() || col.write_requested()) {
+      column_refs->add_ids(col.id());
+    }
+  }
+}
+
+void PgDml::ColRefsToPB() {
+  ClearColRefPBs();
   for (const PgColumn& col : target_.columns()) {
     if (col.read_requested() || col.write_requested()) {
       // assert(col.attr_num() > 0);
-      PgsqlColumnRefPB *column_ref = AllocColumnRefPB();
-      column_ref->set_column_id(col.id());
-      column_ref->set_attno(col.attr_num());
+      PgsqlColRefPB *col_ref = AllocColRefPB();
+      col_ref->set_column_id(col.id());
+      col_ref->set_attno(col.attr_num());
       if (col.has_pg_type_info()) {
-        column_ref->set_typid(col.pg_typid());
-        column_ref->set_typmod(col.pg_typmod());
-        column_ref->set_collid(col.pg_collid());
+        col_ref->set_typid(col.pg_typid());
+        col_ref->set_typmod(col.pg_typmod());
+        col_ref->set_collid(col.pg_collid());
       }
     }
   }

@@ -119,12 +119,17 @@ class PgDml : public PgStatement {
   // Update set values.
   CHECKED_STATUS UpdateAssignPBs();
 
-  // Indicate in the protobuf what columns must be read before the statement is processed.
-  void ColumnRefsToPB();
+  // Compatibility: set deprecated column_refs for legacy nodes
+  void ColumnRefsToPB(PgsqlColumnRefsPB *column_refs);
 
-  virtual PgsqlColumnRefPB *AllocColumnRefPB() = 0;
+  // Put column references to the protobuf request
+  void ColRefsToPB();
 
-  virtual void ClearColumnRefPBs() = 0;
+  // Clear previously allocated PgsqlColRefPB entries from the protobuf request
+  virtual void ClearColRefPBs() = 0;
+
+  // Allocate a PgsqlColRefPB entriy in the protobuf request
+  virtual PgsqlColRefPB *AllocColRefPB() = 0;
 
   // -----------------------------------------------------------------------------------------------
   // Data members that define the DML statement.

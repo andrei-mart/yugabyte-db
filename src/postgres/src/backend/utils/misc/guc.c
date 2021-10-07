@@ -2037,7 +2037,7 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&yb_enable_expression_pushdown,
-		true,
+		false,
 		NULL, NULL, NULL
 	},
 

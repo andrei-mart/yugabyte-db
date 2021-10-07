@@ -73,15 +73,30 @@ namespace docdb {
 
 namespace {
 
-CHECKED_STATUS CreateProjection(
-    const Schema& schema,
-    const google::protobuf::RepeatedPtrField<PgsqlColumnRefPB> &column_refs,
-    Schema* projection) {
+// Compatibility: accept column references from a legacy nodes as a list of column ids only
+CHECKED_STATUS CreateProjection(const Schema& schema,
+                                const PgsqlColumnRefsPB& column_refs,
+                                Schema* projection) {
   // Create projection of non-primary key columns. Primary key columns are implicitly read by DocDB.
   // It will also sort the columns before scanning.
   vector<ColumnId> column_ids;
+  column_ids.reserve(column_refs.ids_size());
+  for (int32_t id : column_refs.ids()) {
+    const ColumnId column_id(id);
+    if (!schema.is_key_column(column_id)) {
+      column_ids.emplace_back(column_id);
+    }
+  }
+  return schema.CreateProjectionByIdsIgnoreMissing(column_ids, projection);
+}
+
+CHECKED_STATUS CreateProjection(
+    const Schema& schema,
+    const google::protobuf::RepeatedPtrField<PgsqlColRefPB> &column_refs,
+    Schema* projection) {
+  vector<ColumnId> column_ids;
   column_ids.reserve(column_refs.size());
-  for (const PgsqlColumnRefPB& column_ref : column_refs) {
+  for (const PgsqlColRefPB& column_ref : column_refs) {
     const ColumnId column_id(column_ref.column_id());
     if (!schema.is_key_column(column_id)) {
       column_ids.emplace_back(column_id);
@@ -383,7 +398,7 @@ Status PgsqlWriteOperation::Apply(const DocOperationApplyData& data) {
 
     case PgsqlWriteRequestPB::PGSQL_UPSERT: {
       // Upserts should not have column refs (i.e. require read).
-      RSTATUS_DCHECK(request_.column_refs().empty(),
+      RSTATUS_DCHECK(request_.col_refs().empty(),
               IllegalState,
               "Upsert operation should not have column references");
       return ApplyInsert(data, IsUpsert::kTrue);
@@ -913,7 +928,12 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
   const Schema* scan_schema;
   DocPgExprExecutor expr_exec(&schema);
 
-  RETURN_NOT_OK(CreateProjection(schema, request_.column_refs(), &projection));
+  if (!request_.col_refs().empty()) {
+    RETURN_NOT_OK(CreateProjection(schema, request_.col_refs(), &projection));
+  } else {
+    // Compatibility: Either request indeed has no column refs, or it comes from a legacy node.
+    RETURN_NOT_OK(CreateProjection(schema, request_.column_refs(), &projection));
+  }
   table_iter_ = VERIFY_RESULT(CreateIterator(
       ql_storage, request_, projection, schema, txn_op_context_,
       deadline, read_time, is_explicit_request_read_time));
@@ -933,11 +953,11 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
   } else {
     iter = table_iter_.get();
     scan_schema = &schema;
-    for (const PgsqlColumnRefPB& column_ref : request_.column_refs()) {
+    for (const PgsqlColRefPB& column_ref : request_.col_refs()) {
       RETURN_NOT_OK(expr_exec.AddColumnRef(column_ref));
       VLOG(1) << "Added column reference to the executor";
     }
-    for (const PgsqlExpressionPB& expr : request_.where_expr()) {
+    for (const PgsqlExpressionPB& expr : request_.where_clauses()) {
       RETURN_NOT_OK(expr_exec.AddWhereExpression(expr));
       VLOG(1) << "Added where expression to the executor";
     }

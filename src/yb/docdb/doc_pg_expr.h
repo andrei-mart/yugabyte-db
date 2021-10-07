@@ -19,7 +19,7 @@ class DocPgExprExecutor {
   explicit DocPgExprExecutor(const Schema *schema) : schema_(schema) {}
   virtual ~DocPgExprExecutor() {}
 
-  CHECKED_STATUS AddColumnRef(const PgsqlColumnRefPB& column_ref);
+  CHECKED_STATUS AddColumnRef(const PgsqlColRefPB& column_ref);
 
   CHECKED_STATUS AddWhereExpression(const PgsqlExpressionPB& ql_expr);
 

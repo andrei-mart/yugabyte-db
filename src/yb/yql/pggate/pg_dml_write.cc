@@ -130,7 +130,9 @@ Status PgDmlWrite::Exec(bool force_non_bufferable) {
   RETURN_NOT_OK(doc_op_->ExecuteInit(nullptr));
 
   // Set column references in protobuf.
-  ColumnRefsToPB();
+  ColRefsToPB();
+  // Compatibility: set column ids as expected by legacy nodes
+  ColumnRefsToPB(write_req_->mutable_column_refs());
 
   // Execute the statement. If the request has been sent, get the result and handle any rows
   // returned.
@@ -175,12 +177,12 @@ PgsqlExpressionPB *PgDmlWrite::AllocQualPB() {
   return nullptr;
 }
 
-PgsqlColumnRefPB *PgDmlWrite::AllocColumnRefPB() {
-  return write_req_->add_column_refs();
+PgsqlColRefPB *PgDmlWrite::AllocColRefPB() {
+  return write_req_->add_col_refs();
 }
 
-void PgDmlWrite::ClearColumnRefPBs() {
-  write_req_->clear_column_refs();
+void PgDmlWrite::ClearColRefPBs() {
+  write_req_->clear_col_refs();
 }
 
 }  // namespace pggate

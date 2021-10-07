@@ -120,15 +120,15 @@ PgsqlExpressionPB *PgDmlRead::AllocTargetPB() {
 }
 
 PgsqlExpressionPB *PgDmlRead::AllocQualPB() {
-  return read_req_->add_where_expr();
+  return read_req_->add_where_clauses();
 }
 
-PgsqlColumnRefPB *PgDmlRead::AllocColumnRefPB() {
-  return read_req_->add_column_refs();
+PgsqlColRefPB *PgDmlRead::AllocColRefPB() {
+  return read_req_->add_col_refs();
 }
 
-void PgDmlRead::ClearColumnRefPBs() {
-  read_req_->clear_column_refs();
+void PgDmlRead::ClearColRefPBs() {
+  read_req_->clear_col_refs();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -141,7 +141,9 @@ void PgDmlRead::SetColumnRefs() {
     DCHECK(!has_aggregate_targets()) << "Aggregate pushdown should not happen with index";
   }
   read_req_->set_is_aggregate(has_aggregate_targets());
-  ColumnRefsToPB();
+  ColRefsToPB();
+  // Compatibility: set column ids as expected by legacy nodes
+  ColumnRefsToPB(read_req_->mutable_column_refs());
 }
 
 // Method removes empty primary binds and moves tailing non empty range primary binds
