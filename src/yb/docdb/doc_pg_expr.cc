@@ -6,11 +6,16 @@
 #include "yb/docdb/docdb_pgapi.h"
 #include "yb/util/bfpg/bfpg.h"
 #include "yb/util/logging.h"
+#include "yb/yql/pggate/pg_value.h"
+
+using yb::pggate::PgValueToPB;
 
 namespace yb {
 namespace docdb {
 
 //--------------------------------------------------------------------------------------------------
+
+typedef std::pair<YbgPreparedExpr, DocPgVarRef> DocPgEvalExprData;
 
 class DocPgExprExecutor::Private {
   Private() {
@@ -48,29 +53,40 @@ class DocPgExprExecutor::Private {
                           &var_map_);
   }
 
-  CHECKED_STATUS PreparePgExprCall(const PgsqlExpressionPB& ql_expr,
-                                   const Schema *schema) {
+  CHECKED_STATUS PreparePgWhereExpr(const PgsqlExpressionPB& ql_expr,
+                                    const Schema *schema) {
+    YbgPreparedExpr expr;
+    RETURN_NOT_OK(prepare_pg_expr_call(ql_expr, schema, &expr, nullptr));
+    where_clause_.push_back(expr);
+    VLOG(1) << "Condition has been added";
+    return Status::OK();
+  }
+
+  CHECKED_STATUS PreparePgTargetExpr(const PgsqlExpressionPB& ql_expr,
+                                     const Schema *schema) {
+    YbgPreparedExpr expr;
+    DocPgVarRef expr_type;
+    RETURN_NOT_OK(prepare_pg_expr_call(ql_expr, schema, &expr, &expr_type));
+    targets_.emplace_back(expr, expr_type);
+    VLOG(1) << "Target expression has been added";
+    return Status::OK();
+  }
+
+  CHECKED_STATUS prepare_pg_expr_call(const PgsqlExpressionPB& ql_expr,
+                                      const Schema *schema,
+                                      YbgPreparedExpr *expr,
+                                      DocPgVarRef *expr_type) {
+    YbgMemoryContext old;
     assert(row_ctx_ == nullptr);
     assert(ql_expr.expr_case() == PgsqlExpressionPB::ExprCase::kTscall);
-    YbgMemoryContext old;
-    YbgSetCurrentMemoryContext(expression_ctx_, &old);
     const PgsqlBCallPB& tscall = ql_expr.tscall();
     assert(static_cast<bfpg::TSOpcode>(tscall.opcode()) == bfpg::TSOpcode::kPgEvalExprCall);
+    assert(tscall.operands_size() == 1);
     const std::string& expr_str = tscall.operands(0).value().string_value();
-    std::vector<DocPgParamDesc> params;
-    int num_params = (tscall.operands_size() - 1) / 3;
-    params.reserve(num_params);
-    for (int i = 0; i < num_params; i++) {
-      int32_t attno = tscall.operands(3*i + 1).value().int32_value();
-      int32_t typid = tscall.operands(3*i + 2).value().int32_value();
-      int32_t typmod = tscall.operands(3*i + 3).value().int32_value();
-      params.emplace_back(attno, typid, typmod);
-    }
-    YbgPreparedExpr expr;
-    RETURN_NOT_OK(DocPgPrepareExpr(expr_str, params, schema, &var_map_, &expr, nullptr));
-    where_clause_.push_back(expr);
+    YbgSetCurrentMemoryContext(expression_ctx_, &old);
+    const Status s = DocPgPrepareExpr(expr_str, expr, expr_type);
     YbgSetCurrentMemoryContext(old, nullptr);
-    return Status::OK();
+    return s;
   }
 
   CHECKED_STATUS PreparePgRowData(const QLTableRow& table_row,
@@ -101,7 +117,30 @@ class DocPgExprExecutor::Private {
     assert(row_ctx_ != nullptr);
     YbgSetCurrentMemoryContext(row_ctx_, &old);
     RETURN_NOT_OK(DocPgEvalExpr(expr, expr_ctx, &datum, &is_null));
+    YbgSetCurrentMemoryContext(old, nullptr);
     *result = (!is_null && datum != 0);
+    VLOG(1) << "Condition has been evaluated: " << *result;
+    return Status::OK();
+  }
+
+  CHECKED_STATUS EvalTargetExprCalls(YbgExprContext expr_ctx,
+                                     DocPgResults *results) {
+    YbgMemoryContext old;
+    int i = 0;
+    assert(targets_.size() == results->size());
+    assert(row_ctx_ != nullptr);
+    YbgSetCurrentMemoryContext(row_ctx_, &old);
+    for (DocPgEvalExprData target : targets_) {
+      QLExprResult result = results->at(i++);
+      uint64_t datum;
+      bool is_null;
+      RETURN_NOT_OK(DocPgEvalExpr(target.first, expr_ctx, &datum, &is_null));
+      RETURN_NOT_OK(PgValueToPB(target.second.var_type,
+                                datum,
+                                is_null,
+                                &result.Writer().NewValue()));
+      VLOG(1) << "Target expression has been added";
+    }
     YbgSetCurrentMemoryContext(old, nullptr);
     return Status::OK();
   }
@@ -109,6 +148,7 @@ class DocPgExprExecutor::Private {
   YbgMemoryContext expression_ctx_ = nullptr;
   YbgMemoryContext row_ctx_ = nullptr;
   std::list<YbgPreparedExpr> where_clause_;
+  std::list<DocPgEvalExprData> targets_;
   std::map<int, const DocPgVarRef> var_map_;
 
   friend class DocPgExprExecutor;
@@ -131,27 +171,36 @@ CHECKED_STATUS DocPgExprExecutor::AddWhereExpression(const PgsqlExpressionPB& ql
   if (private_.get() == nullptr) {
     private_.reset(new Private());
   }
-  return private_->PreparePgExprCall(ql_expr, schema_);
+  return private_->PreparePgWhereExpr(ql_expr, schema_);
 }
 
-CHECKED_STATUS DocPgExprExecutor::ExecWhereExpr(const QLTableRow& table_row, bool *result) {
-  *result = true;
+CHECKED_STATUS DocPgExprExecutor::AddTargetExpression(const PgsqlExpressionPB& ql_expr) {
+  if (private_.get() == nullptr) {
+    private_.reset(new Private());
+  }
+  return private_->PreparePgTargetExpr(ql_expr, schema_);
+}
 
-  if (private_.get() == nullptr || private_->where_clause_.empty()) {
+CHECKED_STATUS DocPgExprExecutor::Exec(const QLTableRow& table_row,
+                                       DocPgResults *results,
+                                       bool *match) {
+  if (private_.get() == nullptr) {
     return Status::OK();
   }
 
   YbgExprContext expr_ctx;
   RETURN_NOT_OK(private_->PreparePgRowData(table_row, &expr_ctx));
   for (auto expr : private_->where_clause_) {
-    RETURN_NOT_OK(private_->EvalWhereExprCall(expr, expr_ctx, result));
-    if (!(*result)) {
-      break;
+    bool res;
+    RETURN_NOT_OK(private_->EvalWhereExprCall(expr, expr_ctx, &res));
+    if (!res) {
+      *match = false;
+      return Status::OK();
     }
   }
-  return Status::OK();
+  *match = true;
+  return private_->EvalTargetExprCalls(expr_ctx, results);
 }
-
 
 }  // namespace docdb
 }  // namespace yb

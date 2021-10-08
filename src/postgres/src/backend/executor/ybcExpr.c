@@ -273,67 +273,32 @@ bool YbCanPushdownExpr(Expr *pg_expr, List **params)
 	return !yb_pushdown_walker((Node *) pg_expr, params);
 }
 
-YBCPgExpr YBCNewEvalSingleParamExprCall(YBCPgStatement ybc_stmt,
-										Expr *pg_expr,
-										int32_t attno,
-										int32_t typid,
-										int32_t typmod,
-										int32_t collid)
-{
-	YBCPgExpr		expr;
-	List		   *params;
-	YbExprParamDesc *param = makeNode(YbExprParamDesc);
-	param->attno = attno;
-	param->typid = typid;
-	param->typmod = typmod;
-	param->collid = collid;
-	params = list_make1(param);
-	expr = YBCNewEvalExprCall(ybc_stmt, pg_expr, params);
-	list_free_deep(params);
-	return expr;
-}
-
 /*
  * Assuming the first param is the target column, therefore representing both
  * the first argument and return type.
  */
-YBCPgExpr YBCNewEvalExprCall(YBCPgStatement ybc_stmt,
-							 Expr *pg_expr,
-							 List *params)
+YBCPgExpr YBCNewEvalExprCall(YBCPgStatement ybc_stmt, Expr *pg_expr)
 {
-	ListCell *lc;
-	YBCPgExpr ybc_expr = NULL;
-	YbExprParamDesc *param = (YbExprParamDesc *) linitial(params);
-	const YBCPgTypeEntity *type_ent = YbDataTypeFromOidMod(InvalidAttrNumber, param->typid);
+	YBCPgExpr ybc_expr;
 	YBCPgCollationInfo collation_info;
-	YBGetCollationInfo(param->collid, type_ent, 0 /* Datum */, true /* is_null */,
+	const YBCPgTypeEntity *type_ent;
+	type_ent = YbDataTypeFromOidMod(InvalidAttrNumber,
+									exprType((Node *) pg_expr));
+	YBGetCollationInfo(exprCollation((Node *) pg_expr),
+					   type_ent,
+					   0 /* Datum */,
+					   true /* is_null */,
 					   &collation_info);
-	YBCPgNewOperator(ybc_stmt, "eval_expr_call", type_ent, collation_info.collate_is_valid_non_c, &ybc_expr);
+	YBCPgNewOperator(ybc_stmt,
+					 "eval_expr_call",
+					 type_ent,
+					 collation_info.collate_is_valid_non_c,
+					 &ybc_expr);
 
 	Datum expr_datum = CStringGetDatum(nodeToString(pg_expr));
 	YBCPgExpr expr = YBCNewConstant(ybc_stmt, CSTRINGOID, C_COLLATION_OID,
 									expr_datum , /* IsNull */ false);
 	YBCPgOperatorAppendArg(ybc_expr, expr);
-
-	/*
-	 * Adding the column type ids and mods to the message since we only have the YQL types in the
-	 * DocDB Schema.
-	 * TODO(mihnea): Eventually DocDB should know the full YSQL/PG types and we can remove this.
-	 */
-	foreach(lc, params) {
-		param = (YbExprParamDesc *) lfirst(lc);
-		Datum attno = Int32GetDatum(param->attno);
-		YBCPgExpr attno_expr = YBCNewConstant(ybc_stmt, INT4OID, InvalidOid, attno, false);
-		YBCPgOperatorAppendArg(ybc_expr, attno_expr);
-
-		Datum typid = Int32GetDatum(param->typid);
-		YBCPgExpr typid_expr = YBCNewConstant(ybc_stmt, INT4OID, InvalidOid, typid, false);
-		YBCPgOperatorAppendArg(ybc_expr, typid_expr);
-
-		Datum typmod = Int32GetDatum(param->typmod);
-		YBCPgExpr typmod_expr = YBCNewConstant(ybc_stmt, INT4OID, InvalidOid, typmod, false);
-		YBCPgOperatorAppendArg(ybc_expr, typmod_expr);
-	}
 	return ybc_expr;
 }
 

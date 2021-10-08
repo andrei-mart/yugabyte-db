@@ -16,6 +16,9 @@ YbgGetTypeTable
 YbgExprContextCreate
 YbgExprContextAddColValue
 YbgPrepareExpr
+YbgExprType
+YbgExprTypmod
+YbgExprCollation
 YbgEvalExpr
 YbgSplitArrayDatum
 

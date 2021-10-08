@@ -52,6 +52,7 @@ struct DocPgVarRef {
   ColumnIdRep var_colid;
   const YBCPgTypeEntity *var_type;
   YBCPgTypeAttrs var_type_attrs;
+  DocPgVarRef() {}
 
   DocPgVarRef(ColumnIdRep var_colid, const YBCPgTypeEntity *var_type, int32_t var_typmod)
     : var_colid(var_colid), var_type(var_type), var_type_attrs({var_typmod})
@@ -65,15 +66,8 @@ const YBCPgTypeEntity* DocPgGetTypeEntity(YbgTypeDesc pg_type);
 //-----------------------------------------------------------------------------
 
 Status DocPgPrepareExpr(const std::string& expr_str,
-                        std::vector<DocPgParamDesc> params,
-                        const Schema *schema,
-                        std::map<int, const DocPgVarRef> *var_map,
                         YbgPreparedExpr *expr,
                         DocPgVarRef *ret_type);
-
-Status DocPgPrepareExprParams(std::vector<DocPgParamDesc> params,
-                              const Schema *schema,
-                              std::map<int, const DocPgVarRef> *var_map);
 
 Status DocPgAddVarRef(const ColumnId& column_id,
                       int32_t attno,
@@ -90,11 +84,6 @@ Status DocPgEvalExpr(YbgPreparedExpr expr,
                      YbgExprContext expr_ctx,
                      uint64_t *datum,
                      bool *is_null);
-
-Status DocPgEvalExpr(YbgPreparedExpr expr,
-                     YbgExprContext expr_ctx,
-                     const DocPgVarRef& res_type,
-                     QLValue* result);
 
 // Given a 'ql_value' with a binary value, interpret the binary value as a text
 // array, and store the individual elements in 'ql_value_vec';

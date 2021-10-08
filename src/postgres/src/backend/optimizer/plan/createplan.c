@@ -120,6 +120,7 @@ static LockRows *create_lockrows_plan(PlannerInfo *root, LockRowsPath *best_path
 					 int flags);
 static bool yb_single_row_update_or_delete_path(PlannerInfo *root, ModifyTablePath *path,
 				List **result_tlist, List **modify_tlist,
+				List **column_refs,
 				bool *no_row_trigger,
 				List **no_update_index_list);
 static ModifyTable *create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path);
@@ -2518,6 +2519,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 									ModifyTablePath *path,
 									List **result_tlist,
 									List **modify_tlist,
+									List **column_refs,
 									bool *no_row_trigger,
 									List **no_update_index_list)
 {
@@ -2534,12 +2536,10 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	TargetEntry **indexquals = NULL;
 	int attr_num;
 	AttrNumber attr_offset;
+	Bitmapset *update_attrs = NULL;
+	Bitmapset *pushdown_update_attrs = NULL;
 
 	*result_tlist = NIL;
-	Bitmapset *update_attrs = NULL;
-
-	/* For update, SET clause attrs whose RHS value to be evaluated by DocDB */
-	Bitmapset *pushdown_update_attrs = NULL;
 
 	/* Verify YB is enabled. */
 	if (!IsYugaByteEnabled())
@@ -2564,28 +2564,28 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	 */
 	for (int rti = 1; rti < root->simple_rel_array_size; ++rti)
 	{
-			RelOptInfo *rel = root->simple_rel_array[rti];
-			if (rel != NULL)
+		RelOptInfo *rel = root->simple_rel_array[rti];
+		if (rel != NULL)
+		{
+			if (relInfo == NULL)
 			{
-					if (relInfo == NULL)
-					{
-						/* Found the first non null RelOptInfo.
-						 * Set relInfo and relid.
-						 */
-						relInfo = rel;
-						relid = root->simple_rte_array[rti]->relid;
-					}
-					else
-					{
-							/*
-							 * There are multiple entries in simple_rel_array.
-							 * This implies that multiple relations are being
-							 * affected. Single row optimization is not
-							 * applicable here.
-							 */
-							return false;
-					}
+				/* Found the first non null RelOptInfo.
+				 * Set relInfo and relid.
+				 */
+				relInfo = rel;
+				relid = root->simple_rte_array[rti]->relid;
 			}
+			else
+			{
+				/*
+				 * There are multiple entries in simple_rel_array.
+				 * This implies that multiple relations are being
+				 * affected. Single row optimization is not
+				 * applicable here.
+				 */
+				return false;
+			}
+		}
 	}
 
 	/*
@@ -2593,7 +2593,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	 */
 	if (relInfo == NULL)
 	{
-			return false;
+		return false;
 	}
 
 	/* ON CONFLICT clause is not supported here yet. */
@@ -2649,10 +2649,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		 */
 		foreach(values, build_path_tlist(subroot, subpath))
 		{
-			TargetEntry	   *tle;
-			List		   *params = NIL;
-
-			tle = lfirst_node(TargetEntry, values);
+			TargetEntry *tle = lfirst_node(TargetEntry, values);
 
 			/* Ignore unspecified columns. */
 			if (IsA(tle->expr, Var))
@@ -2663,20 +2660,12 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 				 * (added for YB scan in rewrite handler).
 				 */
 				if (var->varattno == InvalidAttrNumber ||
-				    var->varattno == tle->resno ||
-				    (var->varattno == YBTupleIdAttributeNumber &&
-				        var->varcollid == InvalidOid))
+					var->varattno == tle->resno ||
+					(var->varattno == YBTupleIdAttributeNumber &&
+						var->varcollid == InvalidOid))
 				{
 					continue;
 				}
-			}
-
-			/* Verify expression is supported. */
-			if (!YbCanPushdownExpr(tle->expr, &params))
-			{
-				list_free_deep(params);
-				RelationClose(relation);
-				return false;
 			}
 
 			/* Updates involving primary key columns are not single-row. */
@@ -2685,6 +2674,13 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 				RelationClose(relation);
 				return false;
 			}
+
+			subpath_tlist = lappend(subpath_tlist, tle);
+			update_attrs = bms_add_member(update_attrs, tle->resno - attr_offset);
+
+			/* Verify expression is supported. */
+			if (!YbCanPushdownExpr(tle->expr, column_refs))
+				continue;
 
 			int resno = tle->resno;
 			TupleDesc tupleDesc = RelationGetDescr(relation);
@@ -2702,20 +2698,10 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 			 * need to store the result itself with no collation-encoding.
 			 */
 			if (YBIsCollationValidNonC(target_collation_id))
-			{
-				RelationClose(relation);
-				return false;
-			}
+				continue;
 
-			if (params)
-			{
-				pushdown_update_attrs = bms_add_member(
-					pushdown_update_attrs, tle->resno - attr_offset);
-				list_free_deep(params);
-			}
-
-			subpath_tlist = lappend(subpath_tlist, tle);
-			update_attrs = bms_add_member(update_attrs, tle->resno - attr_offset);
+			pushdown_update_attrs = bms_add_member(pushdown_update_attrs,
+												   tle->resno - attr_offset);
 		}
 	}
 
@@ -2869,43 +2855,6 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	}
 
 	/*
-	* Additional check for RETURNING.
-	* For UPDATE, verify RETURNING columns do not contain unsupported expressions.
-	* FOR DELETE, this check passes only when RETURNING column(s) only contain
-	* primary key column(s).
-	*/
-	if (path->operation == CMD_UPDATE && list_length(path->returningLists) > 0)
-	{
-		foreach(values, linitial(path->returningLists))
-		{
-			int attr = lfirst_node(TargetEntry, values)->resorigcol - attr_offset;
-			if ((!bms_is_member(attr, update_attrs) &&
-				 !bms_is_member(attr, primary_key_attrs)) ||
-				bms_is_member(attr, pushdown_update_attrs))
-			{
-				RelationClose(relation);
-				return false;
-			}
-		}
-	}
-	else
-	{
-		if (list_length(path->returningLists) > 0)
-		{
-			foreach(values, linitial(path->returningLists))
-			{
-				int attr = lfirst_node(TargetEntry, values)->resorigcol - attr_offset;
-				if (!bms_is_member(attr, update_attrs) &&
-					!bms_is_member(attr, primary_key_attrs))
-				{
-					RelationClose(relation);
-					return false;
-				}
-			}
-		}
-	}
-
-	/*
 	 * Verify all YB primary keys are specified in the WHERE clause.
 	 */
 	if (!YBCAllPrimaryKeysProvided(relation, primary_key_attrs))
@@ -2945,7 +2894,8 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		}
 		else if (subpath_tlist_values && subpath_tlist_tle->resno == attr_num)
 		{
-			if (bms_is_member(subpath_tlist_tle->resno  - attr_offset, pushdown_update_attrs))
+			if (bms_is_member(subpath_tlist_tle->resno - attr_offset,
+							  pushdown_update_attrs))
 			{
 				/*
 				 * If the expr needs pushdown bypass query-layer evaluation.
@@ -2993,14 +2943,15 @@ static ModifyTable *
 create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 {
 	ModifyTable *plan;
-	List	    *subplans = NIL;
-	ListCell    *subpaths,
-	            *subroots;
+	List	   *subplans = NIL;
+	ListCell   *subpaths,
+			   *subroots;
 
-	List        *result_tlist = NIL;
-	List        *modify_tlist = NIL;
-	bool        no_row_trigger = false;
-	List        *no_update_index_list = NIL;
+	List	   *result_tlist = NIL;
+	List	   *modify_tlist = NIL;
+	List	   *column_refs = NIL;
+	bool		no_row_trigger = false;
+	List	   *no_update_index_list = NIL;
 
 	/*
 	 * If we are a single row UPDATE/DELETE in a YB relation, add Result subplan
@@ -3009,9 +2960,10 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 	 * separately executed operation.
 	 */
 	if (yb_single_row_update_or_delete_path(root, best_path, &result_tlist,
-	                                        &modify_tlist, &no_row_trigger,
-	                                        best_path->operation == CMD_UPDATE ?
-	                                        &no_update_index_list : NULL))
+											&modify_tlist, &column_refs,
+											&no_row_trigger,
+											best_path->operation == CMD_UPDATE ?
+												&no_update_index_list : NULL))
 	{
 		Plan *subplan = (Plan *) make_result(result_tlist, NULL, NULL);
 		copy_generic_path_info(subplan, linitial(best_path->subpaths));
@@ -3064,6 +3016,7 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 							best_path->epqParam);
 
 	plan->ybPushdownTlist = modify_tlist;
+	plan->ybColumnRefs = column_refs;
 	plan->no_update_index_list = no_update_index_list;
 	plan->no_row_trigger = no_row_trigger;
 

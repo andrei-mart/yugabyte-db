@@ -14,6 +14,8 @@
 namespace yb {
 namespace docdb {
 
+typedef std::vector<QLExprResult> DocPgResults;
+
 class DocPgExprExecutor {
  public:
   explicit DocPgExprExecutor(const Schema *schema) : schema_(schema) {}
@@ -23,7 +25,9 @@ class DocPgExprExecutor {
 
   CHECKED_STATUS AddWhereExpression(const PgsqlExpressionPB& ql_expr);
 
-  CHECKED_STATUS ExecWhereExpr(const QLTableRow& table_row, bool *result);
+  CHECKED_STATUS AddTargetExpression(const PgsqlExpressionPB& ql_expr);
+
+  CHECKED_STATUS Exec(const QLTableRow& table_row, DocPgResults *results, bool *match);
 
  protected:
   const Schema *schema_;

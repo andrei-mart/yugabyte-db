@@ -26,6 +26,7 @@
 #include "executor/executor.h"
 #include "nodes/execnodes.h"
 #include "nodes/makefuncs.h"
+#include "nodes/nodeFuncs.h"
 #include "nodes/primnodes.h"
 #include "utils/memutils.h"
 #include "utils/numeric.h"
@@ -323,6 +324,27 @@ YbgStatus YbgPrepareExpr(char* expr_cstring, YbgPreparedExpr *expr)
 {
 	PG_SETUP_ERROR_REPORTING();
 	*expr = (YbgPreparedExpr) stringToNode(expr_cstring);
+	return PG_STATUS_OK;
+}
+
+YbgStatus YbgExprType(const YbgPreparedExpr expr, int32_t *typid)
+{
+	PG_SETUP_ERROR_REPORTING();
+	*typid = exprType((Node *) expr);
+	return PG_STATUS_OK;
+}
+
+YbgStatus YbgExprTypmod(const YbgPreparedExpr expr, int32_t *typmod)
+{
+	PG_SETUP_ERROR_REPORTING();
+	*typmod = exprTypmod((Node *) expr);
+	return PG_STATUS_OK;
+}
+
+YbgStatus YbgExprCollation(const YbgPreparedExpr expr, int32_t *collid)
+{
+	PG_SETUP_ERROR_REPORTING();
+	*collid = exprCollation((Node *) expr);
 	return PG_STATUS_OK;
 }
 

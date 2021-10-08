@@ -262,30 +262,7 @@ CHECKED_STATUS DocExprExecutor::EvalTSCall(const PgsqlBCallPB& tscall,
     }
 
     case bfpg::TSOpcode::kPgEvalExprCall: {
-      const std::string& expr_str = tscall.operands(0).value().string_value();
-      YbgPreparedExpr expr;
-      std::map<int, const DocPgVarRef> var_map;
-      DocPgVarRef res_type(0, nullptr, 0);
-      YbgExprContext expr_ctx;
-      std::vector<DocPgParamDesc> params;
-      int num_params = (tscall.operands_size() - 1) / 3;
-      VLOG(1) << "Expression references " << (num_params - 1) << " parameters";
-      params.reserve(num_params);
-      for (int i = 0; i < num_params; i++) {
-        int32_t attno = tscall.operands(3*i + 1).value().int32_value();
-        int32_t typid = tscall.operands(3*i + 2).value().int32_value();
-        int32_t typmod = tscall.operands(3*i + 3).value().int32_value();
-        params.emplace_back(attno, typid, typmod);
-      }
-
-      YbgPrepareMemoryContext();
-      RETURN_NOT_OK(DocPgPrepareExpr(expr_str, params, schema, &var_map, &expr, &res_type));
-      VLOG(1) << "Parameter map size: " << var_map.size();
-      RETURN_NOT_OK(DocPgPrepareExprCtx(table_row, var_map, &expr_ctx));
-      VLOG(1) << "Returned expr context " << expr_ctx;
-      RETURN_NOT_OK(DocPgEvalExpr(expr, expr_ctx, res_type, result));
-      YbgResetMemoryContext();
-
+      assert(false);
       return Status::OK();
     }
 

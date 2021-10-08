@@ -521,29 +521,18 @@ ybSetupScanQual(ForeignScanState *node)
 	ForeignScan *foreignScan = (ForeignScan *) node->ss.ps.plan;
 	YbFdwExecState *yb_state = (YbFdwExecState *) node->fdw_state;
 	List	   *qual = foreignScan->fdw_recheck_quals;
-	List	   *params;
 	ListCell   *lc;
-	YbExprParamDesc *param;
 
 	MemoryContext oldcontext =
 		MemoryContextSwitchTo(node->ss.ps.ps_ExprContext->ecxt_per_query_memory);
-
-	params = list_copy(foreignScan->fdw_private);
-	param = makeNode(YbExprParamDesc);
-	param->attno = InvalidAttrNumber;
-	param->typid = BOOLOID;
-	param->typmod = -1;
-	param->collid = InvalidOid;
-	params = list_make1(param);
 
 	foreach(lc, qual)
 	{
 		Expr *expr = (Expr *) lfirst(lc);
 		expr = YbExprInstantiateParams(expr, estate->es_param_list_info);
-		YBCPgExpr yb_expr = YBCNewEvalExprCall(yb_state->handle, expr, params);
+		YBCPgExpr yb_expr = YBCNewEvalExprCall(yb_state->handle, expr);
 		HandleYBStatus(YbPgDmlAppendQual(yb_state->handle, yb_expr));
 	}
-	list_free_deep(params);
 
 	MemoryContextSwitchTo(oldcontext);
 }

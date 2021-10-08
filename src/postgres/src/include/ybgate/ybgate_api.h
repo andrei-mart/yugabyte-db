@@ -142,6 +142,12 @@ YbgStatus YbgExprContextAddColValue(YbgExprContext expr_ctx, int32_t attno, uint
 
 YbgStatus YbgPrepareExpr(char* expr_cstring, YbgPreparedExpr *expr);
 
+YbgStatus YbgExprType(const YbgPreparedExpr expr, int32_t *typid);
+
+YbgStatus YbgExprTypmod(const YbgPreparedExpr expr, int32_t *typmod);
+
+YbgStatus YbgExprCollation(const YbgPreparedExpr expr, int32_t *collid);
+
 /*
  * Evaluate an expression, using the expression context to resolve scan variables.
  * Will filling in datum and is_null with the result.

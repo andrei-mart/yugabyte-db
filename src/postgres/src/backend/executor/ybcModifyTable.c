@@ -750,14 +750,14 @@ bool YBCExecuteUpdate(Relation rel,
 	ModifyTable *mt_plan = (ModifyTable *) mtstate->ps.plan;
 	ListCell *pushdown_lc = list_head(mt_plan->ybPushdownTlist);
 	List *returningLists = mt_plan->returningLists;
-	ListCell *returningLists_lc;
+	ListCell *lc;
 
 	/* Set up RETURNING target columns. */
 	if (isSingleRow && list_length(returningLists) > 0)
 	{
-		foreach(returningLists_lc, linitial(returningLists))
+		foreach(lc, linitial(returningLists))
 		{
-			TargetEntry *tle = lfirst_node(TargetEntry, returningLists_lc);
+			TargetEntry *tle = lfirst_node(TargetEntry, lc);
 			if (tle->resorigcol)
 			{
 				YBCAddReturningTargetColumn(update_stmt, tupleDesc, tle->resorigcol);
@@ -779,8 +779,6 @@ bool YBCExecuteUpdate(Relation rel,
 
 		AttrNumber attnum = att_desc->attnum;
 		int32_t type_id = att_desc->atttypid;
-		int32_t type_mod = att_desc->atttypmod;
-		int32_t coll_id = att_desc->attcollation;
 
 		/* Skip virtual (system) and dropped columns */
 		if (!IsRealYBColumn(rel, attnum))
@@ -792,35 +790,35 @@ bool YBCExecuteUpdate(Relation rel,
 
 		/* Assign this attr's value, handle expression pushdown if needed. */
 		if (pushdown_lc != NULL &&
-		    ((TargetEntry *) lfirst(pushdown_lc))->resno == attnum)
+			((TargetEntry *) lfirst(pushdown_lc))->resno == attnum)
 		{
 			TargetEntry *tle = (TargetEntry *) lfirst(pushdown_lc);
-			Expr *expr = copyObject(tle->expr);
-			List *params = NIL;
-			YbExprParamDesc *param;
-			expr = YbExprInstantiateParams(expr, estate->es_param_list_info);
-			Assert(YbCanPushdownExpr(expr, &params));
-			param = makeNode(YbExprParamDesc);
-			param->attno = attnum;
-			param->typid = type_id;
-			param->typmod = type_mod;
-			param->collid = coll_id;
-			params = lcons(param, params);
-			YBCPgExpr ybc_expr = YBCNewEvalExprCall(update_stmt, expr, params);
-			list_free_deep(params);
+			Expr *expr = YbExprInstantiateParams(tle->expr,
+												 estate->es_param_list_info);
+			YBCPgExpr ybc_expr = YBCNewEvalExprCall(update_stmt, expr);
 			HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr));
-
 			pushdown_lc = lnext(pushdown_lc);
 		}
 		else
 		{
 			bool is_null = false;
-			Datum d = heap_getattr(tuple, attnum, tupleDesc, &is_null);
+			Datum d = slot_getattr(slot, attnum, &is_null);
 			Oid collation_id = YBEncodingCollation(update_stmt, attnum, att_desc->attcollation);
 			YBCPgExpr ybc_expr = YBCNewConstant(update_stmt, type_id, collation_id, d, is_null);
 
 			HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr));
 		}
+	}
+	foreach (lc, mt_plan->ybColumnRefs)
+	{
+		YbExprParamDesc *param = (YbExprParamDesc *) lfirst(lc);
+		YBCPgTypeAttrs type_attrs = { param->typmod };
+		YBCPgExpr yb_expr = YBCNewColumnRef(update_stmt,
+											param->attno,
+											param->typid,
+											param->collid,
+											&type_attrs);
+		HandleYBStatus(YbPgDmlAppendColumnRef(update_stmt, yb_expr));
 	}
 
 	/* Execute the statement. */

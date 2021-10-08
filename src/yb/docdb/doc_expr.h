@@ -28,21 +28,6 @@ class DocExprExecutor : public QLExprExecutor {
                                const QLTableRow* table_row,
                                QLExprResultWriter result_writer) override;
 
-//   CHECKED_STATUS PreparePgExprCall(const PgsqlExpressionPB& ql_expr,
-//                                    const Schema *schema,
-//                                    std::map<int, const DocPgVarRef>& var_map,
-//                                    YbgPreparedExpr *expr,
-//                                    DocPgVarRef *res_type);
-
-//   CHECKED_STATUS PreparePgRowData(const QLTableRow& table_row,
-//                                   std::map<int, const DocPgVarRef>& var_map,
-//                                   YbgExprContext *expr_ctx);
-
-//   CHECKED_STATUS EvalPgExprCall(YbgPreparedExpr expr,
-//                                 YbgExprContext expr_ctx,
-//                                 const DocPgVarRef& res_type,
-//                                 QLValue *result);
-
   // Evaluate call to tablet-server builtin operator.
   CHECKED_STATUS EvalTSCall(const QLBCallPB& ql_expr,
                             const QLTableRow& table_row,

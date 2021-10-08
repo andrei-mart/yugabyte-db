@@ -52,17 +52,7 @@ extern Expr *YbExprInstantiateParams(Expr* expr, ParamListInfo paramLI);
 
 extern bool YbCanPushdownExpr(Expr *pg_expr, List **params);
 
-// Construct a generic eval_expr call for given a PG Expr and its expected type and attno.
-extern YBCPgExpr YBCNewEvalSingleParamExprCall(YBCPgStatement ybc_stmt,
-                                               Expr *expr,
-                                               int32_t attno,
-                                               int32_t type_id,
-                                               int32_t type_mod,
-                                               int32_t collation_id);
-
-YBCPgExpr YBCNewEvalExprCall(YBCPgStatement ybc_stmt,
-							 Expr *pg_expr,
-							 List *params);
+YBCPgExpr YBCNewEvalExprCall(YBCPgStatement ybc_stmt, Expr *pg_expr);
 
 extern YbPgExecOutParam *YbCreateExecOutParam();
 

@@ -105,54 +105,28 @@ Status DocPgAddVarRef(const ColumnId& column_id,
   }
   const YBCPgTypeEntity *arg_type = DocPgGetTypeEntity({typid, typmod});
   var_map->emplace(std::piecewise_construct,
-                    std::forward_as_tuple(attno),
-                    std::forward_as_tuple(column_id.rep(), arg_type, typmod));
+                   std::forward_as_tuple(attno),
+                   std::forward_as_tuple(column_id.rep(), arg_type, typmod));
   VLOG(1) << "Attribute " << attno << " has been processed";
   return Status::OK();
 }
 
 Status DocPgPrepareExpr(const std::string& expr_str,
-                        std::vector<DocPgParamDesc> params,
-                        const Schema *schema,
-                        std::map<int, const DocPgVarRef> *var_map,
                         YbgPreparedExpr *expr,
                         DocPgVarRef *ret_type) {
   char *expr_cstring = const_cast<char *>(expr_str.c_str());
   VLOG(1) << "Deserialize " << expr_cstring;
   PG_RETURN_NOT_OK(YbgPrepareExpr(expr_cstring, expr));
-  RETURN_NOT_OK(DocPgPrepareExprParams(params, schema, var_map));
   if (ret_type != nullptr) {
-    YbgTypeDesc pg_arg_type = {params[0].typid, params[0].typmod};
+    int32_t typid;
+    int32_t typmod;
+    PG_RETURN_NOT_OK(YbgExprType(*expr, &typid));
+    PG_RETURN_NOT_OK(YbgExprTypmod(*expr, &typmod));
+    YbgTypeDesc pg_arg_type = {typid, typmod};
     const YBCPgTypeEntity *arg_type = DocPgGetTypeEntity(pg_arg_type);
-    *ret_type = DocPgVarRef(0, arg_type, params[0].typmod);
+    *ret_type = DocPgVarRef(0, arg_type, typmod);
     VLOG(1) << "Processed expression return type";
   }
-  return Status::OK();
-}
-
-Status DocPgPrepareExprParams(std::vector<DocPgParamDesc> params,
-                              const Schema *schema,
-                              std::map<int, const DocPgVarRef> *var_map) {
-  VLOG(1) << "Processing expression parameters";
-  // Set the column values (used to resolve scan variables in the expression).
-  for (const ColumnId& col_id : schema->column_ids()) {
-    bool found = false;
-    auto column = schema->column_by_id(col_id);
-    SCHECK(column.ok(), InternalError, "Invalid Schema");
-    int32_t attno = column->order();
-    for (int i = 0; i < params.size(); i++) {
-      if (attno == params[i].attno) {
-        RETURN_NOT_OK(DocPgAddVarRef(col_id, attno, params[i].typid, params[i].typmod, 0, var_map));
-        found = true;
-        break;
-      }
-    }
-
-    if (!found) {
-      VLOG(1) << "Attribute " << attno << " is not referenced";
-    }
-  }
-  VLOG(1) << "Total attributes referenced: " << var_map->size();
   return Status::OK();
 }
 
@@ -190,17 +164,6 @@ Status DocPgEvalExpr(YbgPreparedExpr expr,
   // Evaluate the expression and get the result.
   PG_RETURN_NOT_OK(YbgEvalExpr(expr, expr_ctx, datum, is_null));
   return Status::OK();
-}
-
-Status DocPgEvalExpr(YbgPreparedExpr expr,
-                     YbgExprContext expr_ctx,
-                     const DocPgVarRef& res_type,
-                     QLValue* result) {
-  // Evaluate the expression and get the result.
-  bool is_null = false;
-  uint64_t datum;
-  RETURN_NOT_OK(DocPgEvalExpr(expr, expr_ctx, &datum, &is_null));
-  return PgValueToPB(res_type.var_type, datum, is_null, result);
 }
 
 Status ExtractTextArrayFromQLBinaryValue(const QLValuePB& ql_value,

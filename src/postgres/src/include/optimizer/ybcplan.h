@@ -35,8 +35,6 @@ bool YBCIsSingleRowUpdateOrDelete(ModifyTable *modifyTable);
 
 bool YBCAllPrimaryKeysProvided(Relation rel, Bitmapset *attrs);
 
-bool YBCIsSupportedSingleRowModifyReturningExpr(Expr *expr);
-
 #endif // YBCPLAN_H
 
 

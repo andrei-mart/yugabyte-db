@@ -487,6 +487,26 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
   bool skipped = true;
 
   if (request_.has_ybctid_column_value()) {
+    DocPgExprExecutor expr_exec(&schema_);
+    std::vector<QLExprResult> results;
+    int num_exprs = 0;
+    int cur_expr = 0;
+    for (const auto& column_value : request_.column_new_values()) {
+      if (GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kPgEvalExprCall) {
+        RETURN_NOT_OK(expr_exec.AddTargetExpression(column_value.expr()));
+        VLOG(1) << "Added target expression to the executor";
+        num_exprs++;
+      }
+    }
+    if (num_exprs > 0) {
+      bool match;
+      for (const PgsqlColRefPB& column_ref : request_.col_refs()) {
+        RETURN_NOT_OK(expr_exec.AddColumnRef(column_ref));
+        VLOG(1) << "Added column reference to the executor";
+      }
+      results.resize(num_exprs);
+      RETURN_NOT_OK(expr_exec.Exec(table_row, &results, &match));
+    }
     for (const auto& column_value : request_.column_new_values()) {
       // Get the column.
       if (!column_value.has_column_id()) {
@@ -494,16 +514,19 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
       }
       const ColumnId column_id(column_value.column_id());
       const ColumnSchema& column = VERIFY_RESULT(schema_.column_by_id(column_id));
-
-      // Check column-write operator.
-      SCHECK(GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kScalarInsert ||
-             GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kPgEvalExprCall,
-             InternalError,
-             "Unsupported DocDB Expression");
-
       // Evaluate column value.
       QLExprResult expr_result;
-      RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, expr_result.Writer(), &schema_));
+
+      if (GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kPgEvalExprCall) {
+        expr_result = results[cur_expr++];
+      } else {
+        // Check column-write operator.
+        SCHECK(GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kScalarInsert,
+               InternalError,
+               "Unsupported DocDB Expression");
+
+        RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, expr_result.Writer(), &schema_));
+      }
 
       // Update RETURNING values
       if (request_.targets_size()) {
@@ -995,7 +1018,7 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
 
     // Match the row with the where condition before adding to the row block.
     bool is_match = true;
-    RETURN_NOT_OK(expr_exec.ExecWhereExpr(row, &is_match));
+    RETURN_NOT_OK(expr_exec.Exec(row, nullptr, &is_match));
     if (is_match) {
       VLOG(2) << "Found matching row";
       match_count++;
