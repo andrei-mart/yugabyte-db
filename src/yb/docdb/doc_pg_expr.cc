@@ -18,7 +18,12 @@ namespace docdb {
 typedef std::pair<YbgPreparedExpr, DocPgVarRef> DocPgEvalExprData;
 
 class DocPgExprExecutor::Private {
-  Private() {
+  Private() {}
+
+  void ensure_expr_context() {
+    if (expression_ctx_) {
+      return;
+    }
     VLOG(1) << "Creating expression memory context";
     YbgCreateMemoryContext(nullptr,
                            "DocPg Expression Context",
@@ -26,9 +31,11 @@ class DocPgExprExecutor::Private {
   }
 
   ~Private() {
-    YbgSetCurrentMemoryContext(expression_ctx_, nullptr);
-    YbgDeleteMemoryContext();
-    VLOG(1) << "Deleted expression memory context";
+    if (expression_ctx_) {
+      YbgSetCurrentMemoryContext(expression_ctx_, nullptr);
+      YbgDeleteMemoryContext();
+      VLOG(1) << "Deleted expression memory context";
+    }
   }
 
   CHECKED_STATUS AddColumnRef(const PgsqlColRefPB& column_ref,
@@ -77,6 +84,7 @@ class DocPgExprExecutor::Private {
                                       YbgPreparedExpr *expr,
                                       DocPgVarRef *expr_type) {
     YbgMemoryContext old;
+    ensure_expr_context();
     assert(row_ctx_ == nullptr);
     assert(ql_expr.expr_case() == PgsqlExpressionPB::ExprCase::kTscall);
     const PgsqlBCallPB& tscall = ql_expr.tscall();
@@ -92,12 +100,16 @@ class DocPgExprExecutor::Private {
   CHECKED_STATUS PreparePgRowData(const QLTableRow& table_row,
                                   YbgExprContext *expr_ctx) {
     YbgMemoryContext old;
+    if (var_map_.empty()) {
+      return Status::OK();
+    }
+    assert(expression_ctx_);
     if (row_ctx_ == nullptr) {
       VLOG(1) << "Creating row memory context";
       YbgCreateMemoryContext(expression_ctx_, "DocPg Row Context", &row_ctx_);
       YbgSetCurrentMemoryContext(row_ctx_, &old);
     } else {
-      VLOG(1) << "Resetting row memory context";
+      VLOG(2) << "Resetting row memory context";
       YbgSetCurrentMemoryContext(row_ctx_, &old);
       YbgResetMemoryContext();
     }
@@ -119,13 +131,16 @@ class DocPgExprExecutor::Private {
     RETURN_NOT_OK(DocPgEvalExpr(expr, expr_ctx, &datum, &is_null));
     YbgSetCurrentMemoryContext(old, nullptr);
     *result = (!is_null && datum != 0);
-    VLOG(1) << "Condition has been evaluated: " << *result;
+    VLOG(2) << "Condition has been evaluated: " << *result;
     return Status::OK();
   }
 
   CHECKED_STATUS EvalTargetExprCalls(YbgExprContext expr_ctx,
                                      DocPgResults *results) {
     YbgMemoryContext old;
+    if (targets_.empty()) {
+      return Status::OK();
+    }
     int i = 0;
     assert(targets_.size() == results->size());
     assert(row_ctx_ != nullptr);

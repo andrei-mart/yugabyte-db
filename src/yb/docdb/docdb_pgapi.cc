@@ -140,7 +140,7 @@ Status DocPgPrepareExprCtx(const QLTableRow& table_row,
   int32_t min_attno = var_map.begin()->first;
   int32_t max_attno = var_map.rbegin()->first;
 
-  VLOG(1) << "Allocating expr context: (" << min_attno << ", " << max_attno;
+  VLOG(1) << "Allocating expr context: (" << min_attno << ", " << max_attno << ")";
   PG_RETURN_NOT_OK(YbgExprContextCreate(min_attno, max_attno, expr_ctx));
 
   // Set the column values (used to resolve scan variables in the expression).
