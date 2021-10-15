@@ -213,6 +213,19 @@ extern MemoryContext GenerationContextCreate(MemoryContext parent,
 #define ALLOCSET_START_SMALL_SIZES \
 	ALLOCSET_SMALL_MINSIZE, ALLOCSET_SMALL_INITSIZE, ALLOCSET_DEFAULT_MAXSIZE
 
+/*
+ * Alloc parameters to be used in DocDB/YBgate.
+ * The ALLOCSET_DOCDB_INITSIZE purposedly differs from both
+ * ALLOCSET_SMALL_INITSIZE and ALLOCSET_DEFAULT_INITSIZE to prevent deleted
+ * context from being cached and reused.
+ * The context caching is not thread safe, it can not be used in multi-threaded
+ * DocDB.
+ */
+#define ALLOCSET_DOCDB_MINSIZE	 0
+#define ALLOCSET_DOCDB_INITSIZE  (2 * 1024)
+#define ALLOCSET_DOCDB_MAXSIZE	 (8 * 1024 * 1024)
+#define ALLOCSET_DOCDB_SIZES \
+	ALLOCSET_DOCDB_MINSIZE, ALLOCSET_DOCDB_INITSIZE, ALLOCSET_DOCDB_MAXSIZE
 
 /*
  * Threshold above which a request in an AllocSet context is certain to be

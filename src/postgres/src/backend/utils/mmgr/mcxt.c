@@ -52,7 +52,7 @@ MemoryContext SetThreadLocalCurrentMemoryContext(MemoryContext memctx)
 MemoryContext CreateThreadLocalCurrentMemoryContext(MemoryContext parent,
 													const char *name)
 {
-	return AllocSetContextCreateExtended(parent, name, ALLOCSET_SMALL_SIZES);
+	return AllocSetContextCreateExtended(parent, name, ALLOCSET_DOCDB_SIZES);
 }
 
 void PrepareThreadLocalCurrentMemoryContext()
@@ -61,7 +61,7 @@ void PrepareThreadLocalCurrentMemoryContext()
 	{
 		MemoryContext memctx = AllocSetContextCreate((MemoryContext) NULL,
 													 "DocDBExprMemoryContext",
-													 ALLOCSET_SMALL_SIZES);
+													 ALLOCSET_DOCDB_SIZES);
 		YBCPgSetThreadLocalCurrentMemoryContext(memctx);
 	}
 }
