@@ -18,29 +18,24 @@ namespace docdb {
 typedef std::pair<YbgPreparedExpr, DocPgVarRef> DocPgEvalExprData;
 
 class DocPgExprExecutor::Private {
-  Private() {}
-
-  void ensure_expr_context() {
-    if (expression_ctx_) {
-      return;
-    }
-    VLOG(1) << "Creating expression memory context";
+  Private() {
     YbgCreateMemoryContext(nullptr,
                            "DocPg Expression Context",
-                           &expression_ctx_);
+                           &mem_ctx_);
+    VLOG(1) << "Created expression memory context @ " << mem_ctx_;
   }
 
   ~Private() {
-    if (expression_ctx_) {
-      YbgSetCurrentMemoryContext(expression_ctx_, nullptr);
-      YbgDeleteMemoryContext();
-      VLOG(1) << "Deleted expression memory context";
-    }
+    YbgSetCurrentMemoryContext(mem_ctx_, nullptr);
+    VLOG(1) << "Deleting row memory context @ " << row_ctx_;
+    VLOG(1) << "Deleting expression memory context @ " << mem_ctx_;
+    YbgDeleteMemoryContext();
+    VLOG(1) << "Deleted memory contexts";
   }
 
   CHECKED_STATUS AddColumnRef(const PgsqlColRefPB& column_ref,
                               const Schema *schema) {
-    assert(row_ctx_ == nullptr);
+    assert(expr_ctx_ == nullptr);
     ColumnId col_id = ColumnId(column_ref.column_id());
     if (!column_ref.has_typid()) {
       VLOG(1) << "Column reference " << col_id << " has no type information, skipping";
@@ -84,59 +79,70 @@ class DocPgExprExecutor::Private {
                                       YbgPreparedExpr *expr,
                                       DocPgVarRef *expr_type) {
     YbgMemoryContext old;
-    ensure_expr_context();
-    assert(row_ctx_ == nullptr);
+    assert(expr_ctx_ == nullptr);
     assert(ql_expr.expr_case() == PgsqlExpressionPB::ExprCase::kTscall);
     const PgsqlBCallPB& tscall = ql_expr.tscall();
     assert(static_cast<bfpg::TSOpcode>(tscall.opcode()) == bfpg::TSOpcode::kPgEvalExprCall);
     assert(tscall.operands_size() == 1);
     const std::string& expr_str = tscall.operands(0).value().string_value();
-    YbgSetCurrentMemoryContext(expression_ctx_, &old);
+    YbgSetCurrentMemoryContext(mem_ctx_, &old);
     const Status s = DocPgPrepareExpr(expr_str, expr, expr_type);
     YbgSetCurrentMemoryContext(old, nullptr);
     return s;
   }
 
-  CHECKED_STATUS PreparePgRowData(const QLTableRow& table_row,
-                                  YbgExprContext *expr_ctx) {
+  CHECKED_STATUS PreparePgRowData(const QLTableRow& table_row) {
     YbgMemoryContext old;
-    if (var_map_.empty()) {
-      return Status::OK();
-    }
-    assert(expression_ctx_);
+    assert(mem_ctx_);
     if (row_ctx_ == nullptr) {
-      VLOG(1) << "Creating row memory context";
-      YbgCreateMemoryContext(expression_ctx_, "DocPg Row Context", &row_ctx_);
-      YbgSetCurrentMemoryContext(row_ctx_, &old);
+      YbgCreateMemoryContext(mem_ctx_, "DocPg Row Context", &row_ctx_);
+      VLOG(1) << "Created row memory context @ " << row_ctx_;
+      YbgSetCurrentMemoryContext(row_ctx_, nullptr);
     } else {
-      VLOG(2) << "Resetting row memory context";
+      VLOG(2) << "Resetting row memory context @ " << row_ctx_;
       YbgSetCurrentMemoryContext(row_ctx_, &old);
       YbgResetMemoryContext();
     }
-
-    RETURN_NOT_OK(DocPgPrepareExprCtx(table_row, var_map_, expr_ctx));
+    if (var_map_.empty()) {
+      return Status::OK();
+    }
+    RETURN_NOT_OK(ensure_expr_context());
+    RETURN_NOT_OK(DocPgPrepareExprCtx(table_row, var_map_, expr_ctx_));
 
     YbgSetCurrentMemoryContext(old, nullptr);
     return Status::OK();
   }
 
-  CHECKED_STATUS EvalWhereExprCall(YbgPreparedExpr expr,
-                                   YbgExprContext expr_ctx,
-                                   bool *result) {
+  CHECKED_STATUS ensure_expr_context() {
+    if (expr_ctx_ == nullptr) {
+      YbgMemoryContext old;
+      YbgSetCurrentMemoryContext(mem_ctx_, &old);
+      RETURN_NOT_OK(DocPgCreateExprCtx(var_map_, &expr_ctx_));
+      YbgSetCurrentMemoryContext(old, nullptr);
+    }
+    return Status::OK();
+  }
+
+  CHECKED_STATUS EvalWhereExprCalls(bool *result) {
     YbgMemoryContext old;
     uint64_t datum;
     bool is_null;
     assert(row_ctx_ != nullptr);
     YbgSetCurrentMemoryContext(row_ctx_, &old);
-    RETURN_NOT_OK(DocPgEvalExpr(expr, expr_ctx, &datum, &is_null));
+    *result = true;
+    for (auto expr : where_clause_) {
+      RETURN_NOT_OK(DocPgEvalExpr(expr, expr_ctx_, &datum, &is_null));
+      VLOG(2) << "Condition has been evaluated: " << *result;
+      if (is_null || datum == 0) {
+        *result = false;
+        break;
+      }
+    }
     YbgSetCurrentMemoryContext(old, nullptr);
-    *result = (!is_null && datum != 0);
-    VLOG(2) << "Condition has been evaluated: " << *result;
     return Status::OK();
   }
 
-  CHECKED_STATUS EvalTargetExprCalls(YbgExprContext expr_ctx,
-                                     DocPgResults *results) {
+  CHECKED_STATUS EvalTargetExprCalls(DocPgResults *results) {
     YbgMemoryContext old;
     if (targets_.empty()) {
       return Status::OK();
@@ -149,7 +155,7 @@ class DocPgExprExecutor::Private {
       QLExprResult result = results->at(i++);
       uint64_t datum;
       bool is_null;
-      RETURN_NOT_OK(DocPgEvalExpr(target.first, expr_ctx, &datum, &is_null));
+      RETURN_NOT_OK(DocPgEvalExpr(target.first, expr_ctx_, &datum, &is_null));
       RETURN_NOT_OK(PgValueToPB(target.second.var_type,
                                 datum,
                                 is_null,
@@ -160,8 +166,9 @@ class DocPgExprExecutor::Private {
     return Status::OK();
   }
 
-  YbgMemoryContext expression_ctx_ = nullptr;
+  YbgMemoryContext mem_ctx_ = nullptr;
   YbgMemoryContext row_ctx_ = nullptr;
+  YbgExprContext expr_ctx_ = nullptr;
   std::list<YbgPreparedExpr> where_clause_;
   std::list<DocPgEvalExprData> targets_;
   std::map<int, const DocPgVarRef> var_map_;
@@ -203,18 +210,11 @@ CHECKED_STATUS DocPgExprExecutor::Exec(const QLTableRow& table_row,
     return Status::OK();
   }
 
-  YbgExprContext expr_ctx;
-  RETURN_NOT_OK(private_->PreparePgRowData(table_row, &expr_ctx));
-  for (auto expr : private_->where_clause_) {
-    bool res;
-    RETURN_NOT_OK(private_->EvalWhereExprCall(expr, expr_ctx, &res));
-    if (!res) {
-      *match = false;
-      return Status::OK();
-    }
-  }
-  *match = true;
-  return private_->EvalTargetExprCalls(expr_ctx, results);
+  RETURN_NOT_OK(private_->PreparePgRowData(table_row));
+  RETURN_NOT_OK(private_->EvalWhereExprCalls(match));
+  if (*match)
+    RETURN_NOT_OK(private_->EvalTargetExprCalls(results));
+  return Status::OK();
 }
 
 }  // namespace docdb

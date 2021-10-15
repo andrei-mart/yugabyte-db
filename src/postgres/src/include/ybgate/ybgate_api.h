@@ -134,6 +134,8 @@ typedef struct Expr* YbgPreparedExpr;
  */
 YbgStatus YbgExprContextCreate(int32_t min_attno, int32_t max_attno, YbgExprContext *expr_ctx);
 
+YbgStatus YbgExprContextReset(YbgExprContext expr_ctx);
+
 /*
  * Add a column value from the table row.
  * Used by expression evaluation to resolve scan variables.

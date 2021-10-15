@@ -130,9 +130,8 @@ Status DocPgPrepareExpr(const std::string& expr_str,
   return Status::OK();
 }
 
-Status DocPgPrepareExprCtx(const QLTableRow& table_row,
-                           const std::map<int, const DocPgVarRef>& var_map,
-                           YbgExprContext *expr_ctx) {
+Status DocPgCreateExprCtx(const std::map<int, const DocPgVarRef>& var_map,
+                          YbgExprContext *expr_ctx) {
   if (var_map.empty()) {
     return Status::OK();
   }
@@ -140,9 +139,15 @@ Status DocPgPrepareExprCtx(const QLTableRow& table_row,
   int32_t min_attno = var_map.begin()->first;
   int32_t max_attno = var_map.rbegin()->first;
 
-  VLOG(1) << "Allocating expr context: (" << min_attno << ", " << max_attno << ")";
+  VLOG(2) << "Allocating expr context: (" << min_attno << ", " << max_attno << ")";
   PG_RETURN_NOT_OK(YbgExprContextCreate(min_attno, max_attno, expr_ctx));
+  return Status::OK();
+}
 
+Status DocPgPrepareExprCtx(const QLTableRow& table_row,
+                           const std::map<int, const DocPgVarRef>& var_map,
+                           YbgExprContext expr_ctx) {
+  PG_RETURN_NOT_OK(YbgExprContextReset(expr_ctx));
   // Set the column values (used to resolve scan variables in the expression).
   for (auto it = var_map.begin(); it != var_map.end(); it++) {
     const int& attno = it->first;
@@ -152,7 +157,7 @@ Status DocPgPrepareExprCtx(const QLTableRow& table_row,
     uint64_t datum = 0;
     RETURN_NOT_OK(PgValueFromPB(arg_ref.var_type, arg_ref.var_type_attrs, *val, &datum, &is_null));
     VLOG(1) << "Adding value for attno " << attno;
-    PG_RETURN_NOT_OK(YbgExprContextAddColValue(*expr_ctx, attno, datum, is_null));
+    PG_RETURN_NOT_OK(YbgExprContextAddColValue(expr_ctx, attno, datum, is_null));
   }
   return Status::OK();
 }

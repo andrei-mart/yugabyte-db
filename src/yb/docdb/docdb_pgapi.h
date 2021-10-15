@@ -76,9 +76,12 @@ Status DocPgAddVarRef(const ColumnId& column_id,
                       int32_t collid,
                       std::map<int, const DocPgVarRef> *var_map);
 
+Status DocPgCreateExprCtx(const std::map<int, const DocPgVarRef>& var_map,
+                          YbgExprContext *expr_ctx);
+
 Status DocPgPrepareExprCtx(const QLTableRow& table_row,
                            const std::map<int, const DocPgVarRef>& var_map,
-                           YbgExprContext *expr_ctx);
+                           YbgExprContext expr_ctx);
 
 Status DocPgEvalExpr(YbgPreparedExpr expr,
                      YbgExprContext expr_ctx,

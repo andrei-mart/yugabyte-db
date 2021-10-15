@@ -301,6 +301,17 @@ YbgStatus YbgExprContextCreate(int32_t min_attno, int32_t max_attno, YbgExprCont
 	return PG_STATUS_OK;
 }
 
+YbgStatus YbgExprContextReset(YbgExprContext expr_ctx)
+{
+	PG_SETUP_ERROR_REPORTING();
+
+	int32_t num_attrs = expr_ctx->max_attno - expr_ctx->min_attno + 1;
+	memset(expr_ctx->attr_vals, 0, sizeof(Datum) * num_attrs);
+	expr_ctx->attr_nulls = NULL;
+
+	return PG_STATUS_OK;
+}
+
 YbgStatus YbgExprContextAddColValue(YbgExprContext expr_ctx,
                                     int32_t attno,
                                     uint64_t datum,
