@@ -107,8 +107,8 @@ bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change)
 	tuple = heap_form_tuple(RelationGetDescr(rel), values, nulls);
 
 	Datum ybctid = YBCGetYBTupleIdFromTuple(rel,
-	                                  tuple,
-	                                  RelationGetDescr(rel));
+											tuple,
+											RelationGetDescr(rel));
 
 	/* Bind ybctid to identify the current row. */
 	YBCPgExpr ybctid_expr = YBCNewConstant(update_stmt, BYTEAOID, InvalidOid, ybctid,
@@ -118,28 +118,28 @@ bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change)
 	/* Set expression c = c + 1 for current version attribute. */
 	AttrNumber attnum = Anum_pg_yb_catalog_version_current_version;
 	Var *arg1 = makeVar(1,
-	                    attnum,
-	                    INT8OID,
-	                    0,
-	                    InvalidOid,
-	                    0);
+						attnum,
+						INT8OID,
+						0,
+						InvalidOid,
+						0);
 
 	Const *arg2 = makeConst(INT8OID,
-	                        0,
-	                        InvalidOid,
-	                        sizeof(int64),
-	                        (Datum) 1,
-	                        false,
-	                        true);
+							0,
+							InvalidOid,
+							sizeof(int64),
+							(Datum) 1,
+							false,
+							true);
 
 	List *args = list_make2(arg1, arg2);
 
 	FuncExpr *expr = makeFuncExpr(F_INT8PL,
-	                              INT8OID,
-	                              args,
-	                              InvalidOid,
-	                              InvalidOid,
-	                              COERCE_EXPLICIT_CALL);
+								  INT8OID,
+								  args,
+								  InvalidOid,
+								  InvalidOid,
+								  COERCE_EXPLICIT_CALL);
 
 	/* INT8 OID. */
 	YBCPgExpr ybc_expr = YBCNewEvalExprCall(update_stmt, (Expr *) expr);

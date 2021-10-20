@@ -82,6 +82,11 @@ YBCPgExpr YBCNewConstantVirtual(YBCPgStatement ybc_stmt, Oid type_id, YBCPgDatum
 	return expr;
 }
 
+/*
+ * yb_expr_instantiate_params_mutator
+ *
+ *	  Expression mutator used internally by YbExprInstantiateParams
+ */
 Node *yb_expr_instantiate_params_mutator(Node *node, ParamListInfo paramLI)
 {
 	if (node == NULL)
@@ -128,6 +133,12 @@ Node *yb_expr_instantiate_params_mutator(Node *node, ParamListInfo paramLI)
 								   (void *) paramLI);
 }
 
+/*
+ * YbExprInstantiateParams
+ *
+ *	  Replace the Param nodes of the expression tree with Const nodes carrying
+ *	  current parameter values before pushing the expression down to DocDB
+ */
 Expr *YbExprInstantiateParams(Expr* expr, ParamListInfo paramLI)
 {
 	/* Fast-path if there are no params. */
@@ -139,6 +150,20 @@ Expr *YbExprInstantiateParams(Expr* expr, ParamListInfo paramLI)
 											(void *) paramLI);
 }
 
+/*
+ * yb_can_pushdown_func
+ *
+ *	  Determine if the function can be pushed down to DocDB
+ *	  Since catalog access is not currently available in DocDB, only built in
+ *	  functions are pushable. The lack of catalog access imposes also other
+ *	  limitations:
+ *	   - Only immutable functions are pushable. Stable and volatile functions
+ *	     are permitted to access the catalog;
+ *	   - DocDB must support conversion of parameter and result values between
+ *	     DocDB and Postgres formats, so there should be conversion functions;
+ *	   - Typically functions with polymorfic parameters or result need catalog
+ *	     access to determine runtime data types, so they are not pushed down.
+ */
 bool yb_can_pushdown_func(Oid funcid)
 {
 	HeapTuple		tuple;
@@ -187,6 +212,11 @@ bool yb_can_pushdown_func(Oid funcid)
 	return true;
 }
 
+/*
+ * yb_pushdown_walker
+ *
+ *	  Expression walker used internally by YbCanPushdownExpr
+ */
 bool yb_pushdown_walker(Node *node, List **params)
 {
 	if (node == NULL)
@@ -197,19 +227,23 @@ bool yb_pushdown_walker(Node *node, List **params)
 		{
 			Var		   *var_expr = castNode(Var, node);
 			AttrNumber	attno = var_expr->varattno;
+			/* DocDB is not aware of Postgres virtual attributes */
 			if (!AttrNumberIsForUserDefinedAttr(attno))
 			{
 				return true;
 			}
+			/* Need to convert values between DocDB and Postgres formats */
 			if (!YBCPgFindTypeEntity(var_expr->vartype))
 			{
 				return true;
 			}
+			/* Collect column reference */
 			if (params)
 			{
 				ListCell   *lc;
 				YbExprParamDesc *param;
 
+				/* Check if the column reference has already been collected */
 				foreach(lc, *params)
 				{
 					param =	(YbExprParamDesc *) lfirst(lc);
@@ -219,6 +253,7 @@ bool yb_pushdown_walker(Node *node, List **params)
 					}
 				}
 
+				/* Add new column reference to the list */
 				param =	makeNode(YbExprParamDesc);
 				param->attno = attno;
 				param->typid = var_expr->vartype;
@@ -265,8 +300,33 @@ bool yb_pushdown_walker(Node *node, List **params)
 	return expression_tree_walker(node, yb_pushdown_walker, (void *) params);
 }
 
+/*
+ * YbCanPushdownExpr
+ *
+ *	  Determine if the expression is pushable.
+ *	  In general, expression tree is pushable if DocDB knows how to execute
+ *	  all its nodes, in other words, it should be handeled by the evalExpr()
+ *	  function defined in the ybgate_api.c. In addition, external paremeter
+ *	  references of supported data types are also pushable, since these
+ *	  references are replaced with constants by YbExprInstantiateParams before
+ *	  the DocDB request is sent.
+ *
+ *	  If the params parameter is provided, function also collects column
+ *	  references represented by Var nodes in the expression tree. The params
+ *	  list may be initially empty (NIL) or already contain some YbExprParamDesc
+ *	  entries. That allows to collect column references from multiple
+ *	  expressions into single list. The function avoids adding duplicate
+ *	  references, however it does not remove duplecates if they are already
+ *	  present in the params list.
+ *
+ *	  To add support for another expression node type it should be added to the
+ *	  yb_pushdown_walker where it should check node attributes that may affect
+ *	  pushability, and implement evaluation of that node type instance in the
+ *	  evalExpr() function.
+ */
 bool YbCanPushdownExpr(Expr *pg_expr, List **params)
 {
+	/* respond with false if pushdown disabled in GUC */
 	if (!yb_enable_expression_pushdown)
 		return false;
 
@@ -274,8 +334,11 @@ bool YbCanPushdownExpr(Expr *pg_expr, List **params)
 }
 
 /*
- * Assuming the first param is the target column, therefore representing both
- * the first argument and return type.
+ * YBCNewEvalExprCall
+ *
+ *	  Serialize the Postgres expression tree and associate it with the
+ *	  DocDB statement. Caller is supposed to ensure that expression is pushable
+ *	  so DocDB can handle it.
  */
 YBCPgExpr YBCNewEvalExprCall(YBCPgStatement ybc_stmt, Expr *pg_expr)
 {

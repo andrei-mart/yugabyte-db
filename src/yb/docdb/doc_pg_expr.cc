@@ -152,7 +152,7 @@ class DocPgExprExecutor::Private {
     assert(row_ctx_ != nullptr);
     YbgSetCurrentMemoryContext(row_ctx_, &old);
     for (DocPgEvalExprData target : targets_) {
-      QLExprResult result = results->at(i++);
+      QLExprResult &result = results->at(i++);
       uint64_t datum;
       bool is_null;
       RETURN_NOT_OK(DocPgEvalExpr(target.first, expr_ctx_, &datum, &is_null));

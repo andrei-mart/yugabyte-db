@@ -518,7 +518,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
       QLExprResult expr_result;
 
       if (GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kPgEvalExprCall) {
-        expr_result = results[cur_expr++];
+        expr_result = std::move(results[cur_expr++]);
       } else {
         // Check column-write operator.
         SCHECK(GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kScalarInsert,
