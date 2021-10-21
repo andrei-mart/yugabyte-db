@@ -802,7 +802,7 @@ bool YBCExecuteUpdate(Relation rel,
 		else
 		{
 			bool is_null = false;
-			Datum d = slot_getattr(slot, attnum, &is_null);
+			Datum d = heap_getattr(tuple, attnum, tupleDesc, &is_null);
 			Oid collation_id = YBEncodingCollation(update_stmt, attnum, att_desc->attcollation);
 			YBCPgExpr ybc_expr = YBCNewConstant(update_stmt, type_id, collation_id, d, is_null);
 
