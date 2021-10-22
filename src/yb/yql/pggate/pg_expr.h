@@ -189,6 +189,7 @@ class PgExpr {
   // Get expression type.
   InternalType internal_type() const;
 
+  // Get Postgres data type information: type Oid, type mod and collation
   int get_pg_typid() const;
   int get_pg_typmod() const;
   int get_pg_collid() const;
@@ -307,11 +308,9 @@ class PgOperator : public PgExpr {
   // Setup operator expression when constructing statement.
   virtual CHECKED_STATUS PrepareForRead(PgDml *pg_stmt, PgsqlExpressionPB *expr_pb);
 
- protected:
-  std::vector<PgExpr*> args_;
-
  private:
   const std::string opname_;
+  std::vector<PgExpr*> args_;
 };
 
 }  // namespace pggate

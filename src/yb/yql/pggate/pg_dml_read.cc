@@ -141,8 +141,9 @@ void PgDmlRead::SetColumnRefs() {
     DCHECK(!has_aggregate_targets()) << "Aggregate pushdown should not happen with index";
   }
   read_req_->set_is_aggregate(has_aggregate_targets());
+  // Populate column references in the read request
   ColRefsToPB();
-  // Compatibility: set column ids as expected by legacy nodes
+  // Compatibility: set column ids in a form that is expected by legacy nodes
   ColumnRefsToPB(read_req_->mutable_column_refs());
 }
 

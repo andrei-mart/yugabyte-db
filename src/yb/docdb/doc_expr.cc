@@ -262,6 +262,8 @@ CHECKED_STATUS DocExprExecutor::EvalTSCall(const PgsqlBCallPB& tscall,
     }
 
     case bfpg::TSOpcode::kPgEvalExprCall: {
+      // Support for serialized Postgres expression evaluation has been moved to separate class
+      // DocPgExprExecutor, it should be instantiated to handle kPgEvalExprCall type of expressions
       assert(false);
       return Status::OK();
     }

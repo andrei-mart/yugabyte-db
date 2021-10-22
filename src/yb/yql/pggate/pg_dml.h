@@ -38,9 +38,13 @@ class PgDml : public PgStatement {
   CHECKED_STATUS AppendTarget(PgExpr *target);
 
   // Append a filter condition.
+  // Supported expression kind is serialized Postgres expression
   CHECKED_STATUS AppendQual(PgExpr *qual);
 
-  // Append a filter condition.
+  // Append a column reference.
+  // If any serialized Postgres expressions appended to other lists require explicit addition
+  // of their column references. Those column references should have Postgres type information.
+  // Other PgExpr kinds are automatically scanned and their column references are appended.
   CHECKED_STATUS AppendColumnRef(PgExpr *colref);
 
   // Prepare column for both ends.
@@ -101,7 +105,10 @@ class PgDml : public PgStatement {
   // Allocate protobuf for a SELECTed expression.
   virtual PgsqlExpressionPB *AllocTargetPB() = 0;
 
-  // Allocate protobuf for a WHERE expression.
+  // Allocate protobuf for a WHERE clause expression.
+  // Subclasses use different protobuf message types for their requests, so they should
+  // implement this method that knows how to add a PgsqlExpressionPB entry into their where_clauses
+  // field.
   virtual PgsqlExpressionPB *AllocQualPB() = 0;
 
   // Allocate protobuf for expression whose value is bounded to a column.
@@ -120,9 +127,17 @@ class PgDml : public PgStatement {
   CHECKED_STATUS UpdateAssignPBs();
 
   // Compatibility: set deprecated column_refs for legacy nodes
+  // We are deprecating PgsqlColumnRefsPB protobuf since it does not allow to transfer Postgres
+  // type information required to evaluate serialized Postgres expressions.
+  // It is being replaced by list of PgsqlColRefPB entries, which is set by ColRefsToPB.
+  // While there is are chance of cluster being upgraded from older version, we have to populate
+  // both.
   void ColumnRefsToPB(PgsqlColumnRefsPB *column_refs);
 
-  // Put column references to the protobuf request
+  // Transfer columns information from target_.columns() to the request's col_refs list field.
+  // Subclasses use different protobuf message types to make requests, so they must implement
+  // the ClearColRefPBs and AllocColRefPB virtual methods to respectively remove all old col_refs
+  // entries and allocate new entry in their requests.
   void ColRefsToPB();
 
   // Clear previously allocated PgsqlColRefPB entries from the protobuf request
@@ -157,6 +172,8 @@ class PgDml : public PgStatement {
   std::vector<PgExpr*> targets_;
 
   // Qual is a where clause condition pushed to the DocDB to filter scanned rows
+  // Qual supports PgExprs holding serialized Postgres expressions, and require the column
+  // references used in these Quals to be explicitly added with AppendColumnRef()
   std::vector<PgExpr*> quals_;
 
   // bind_desc_ is the descriptor of the table whose key columns' values will be specified by the

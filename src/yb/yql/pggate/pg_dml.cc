@@ -103,27 +103,37 @@ Status PgDml::AppendQual(PgExpr *qual) {
   // Allocate associated protobuf.
   PgsqlExpressionPB *expr_pb = AllocQualPB();
 
-  // Prepare expression. Except for constants and place_holders, all other expressions can be
-  // evaluate just one time during prepare.
+  // Populate the expr_pb with data from the qual expression.
+  // Side effect of PrepareForRead is to call PrepareColumnForRead on "this" being passed in
+  // for any column reference found in the expression. However, the serialized Postgres expressions,
+  // the only kind of Postgres expressions supported as quals, can not be searched.
+  // Their column references should be explicitly appended with AppendColumnRef()
   RETURN_NOT_OK(qual->PrepareForRead(this, expr_pb));
 
-  // Link the given expression "attr_value" with the allocated protobuf. Note that except for
-  // constants and place_holders, all other expressions can be setup just one time during prepare.
-  // Example:
-  // - Bind values for a target of SELECT
-  //   SELECT AVG(col + ?) FROM a_table;
-  // expr_binds_[expr_pb] = qual;
   return Status::OK();
 }
 
 Status PgDml::AppendColumnRef(PgExpr *colref) {
   DCHECK(colref->is_colref()) << "Colref is expected";
+  // Postgres attribute number, this is column id to refer the column from Postgres code
   int attr_num = static_cast<PgColumnRef *>(colref)->attr_num();
+  // Retrieve column metadata from the target relation metadata
   PgColumn& col = VERIFY_RESULT(target_.ColumnForAttr(attr_num));
   if (!col.is_virtual_column()) {
-    col.set_pg_type_info(colref->get_pg_typid(),
-                            colref->get_pg_typmod(),
-                            colref->get_pg_collid());
+    // Do not overwrite Postgres
+    if (!col.has_pg_type_info()) {
+      // Postgres type information is required to get column value to evaluate serialized Postgres
+      // expressions. For other purposes it is OK to use InvalidOids (zeroes). That would not make
+      // the column to appear like it has Postgres type information.
+      // Note, that for expression kinds other than serialized Postgres expressions column
+      // references are set automatically: when the expressions are being appended they call either
+      // PrepareColumnForRead or PrepareColumnForWrite for each column reference expression they
+      // contain.
+      col.set_pg_type_info(colref->get_pg_typid(),
+                           colref->get_pg_typmod(),
+                           colref->get_pg_collid());
+    }
+    // Flag column as used, so it is added to the request
     col.set_read_requested(true);
   }
   return Status::OK();
@@ -168,13 +178,18 @@ void PgDml::ColumnRefsToPB(PgsqlColumnRefsPB *column_refs) {
 }
 
 void PgDml::ColRefsToPB() {
+  // Remove previously set column references in case if the statement is being reexecuted
   ClearColRefPBs();
   for (const PgColumn& col : target_.columns()) {
+    // Only used columns are added to the request
     if (col.read_requested() || col.write_requested()) {
-      // assert(col.attr_num() > 0);
+      // Allocate a protobuf entry
       PgsqlColRefPB *col_ref = AllocColRefPB();
+      // Add DocDB identifier
       col_ref->set_column_id(col.id());
+      // Add Postgres identifier
       col_ref->set_attno(col.attr_num());
+      // Add Postgres type information, if defined
       if (col.has_pg_type_info()) {
         col_ref->set_typid(col.pg_typid());
         col_ref->set_typmod(col.pg_typmod());
