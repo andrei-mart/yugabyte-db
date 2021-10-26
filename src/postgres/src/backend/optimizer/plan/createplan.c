@@ -2680,7 +2680,20 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 
 			/* Verify expression is supported. */
 			if (!YbCanPushdownExpr(tle->expr, column_refs))
-				continue;
+			{
+				/*
+				 * If the expression is not pushable, it is still may be added
+				 * to a Result node for evaluation if it contains no Vars.
+				 */
+				List *vars = pull_vars_of_level((Node *) tle->expr, 0);
+				if (vars == NIL)
+					continue;
+
+				/* Otherwise we have to keep the scan */
+				list_free(vars);
+				RelationClose(relation);
+				return false;
+			}
 
 			int resno = tle->resno;
 			TupleDesc tupleDesc = RelationGetDescr(relation);
@@ -2798,10 +2811,20 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	indexquals = (TargetEntry **) palloc0(relInfo->max_attr * sizeof(TargetEntry *));
 
 	/*
-	 * Add WHERE clauses from index scan quals to list, verify they are supported write exprs.
-	 * i.e. after fix_indexqual_references:
-	 * - LHS must be a (key) column
-	 * - RHS must be a "stable" expression (evaluate to constant)
+	 * Check if index quals allow to determine ybctid.
+	 *
+	 * Collect all the expressions primary key columns are compared to, and
+	 * validate that expressions columns are provided.
+	 * Those expressions are added to the Result node's tlist, so at execution
+	 * time we have complete set of values to make the ybctid.
+	 * We do not validate the expressions here, we've already checked that all
+	 * clauses are equality operations, and the criteria if expression is good
+	 * for index qual is pretty strict.
+	 *
+	 * If it is figured out that index qual is not strict enough, we should
+	 * probably add some checks. In particular, we can not add expressions
+	 * with Var references to the result node, but those quals seem filtered out
+	 * already.
 	 */
 	foreach(values, fix_indexqual_references(subroot, index_path))
 	{
@@ -2811,23 +2834,8 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		TargetEntry *tle;
 
 		clause = (Expr *) lfirst(values);
-
-		/* Make sure we're an operator expression. */
-		if (!IsA(clause, OpExpr))
-		{
-			RelationClose(relation);
-			return false;
-		}
-
 		expr = (Expr *) get_rightop(clause);
 		var = castNode(Var, get_leftop(clause));
-
-		/* Verify expression is supported. */
-		if (!YbCanPushdownExpr(expr, NULL))
-		{
-			RelationClose(relation);
-			return false;
-		}
 
 		/*
 		 * If const expression has a different type than the column (var), wrap in a relabel

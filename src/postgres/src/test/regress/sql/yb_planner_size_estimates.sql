@@ -13,12 +13,15 @@ LANGUAGE plpgsql
 AS $$
 BEGIN
     SET yb_non_ddl_txn_for_sys_tables_allowed=1;
+    -- If pushdown is not enabled there is a buffering issue [#10405]
+    SET yb_enable_expression_pushdown to on;
     UPDATE pg_class SET reltuples=t_10000_size WHERE relname='t_10000';
     UPDATE pg_class SET reltuples=t_1000_size WHERE relname='t_1000';
     UPDATE pg_class SET reltuples=t_100_size WHERE relname='t_100';
     UPDATE pg_class SET reltuples=t_1000000_size WHERE relname='t_1000000';
     UPDATE pg_yb_catalog_version SET current_version=current_version+1 WHERE db_oid=1;
     SET yb_non_ddl_txn_for_sys_tables_allowed=0;
+    SET yb_enable_expression_pushdown to off;
 END;
 $$;
 -- Updating table sizes enables the query planner to choose appropriate join orders. In other words,
