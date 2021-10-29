@@ -104,8 +104,7 @@ Node *yb_expr_instantiate_params_mutator(Node *node, ParamListInfo paramLI)
 			prm = &paramLI->params[param->paramid - 1];
 
 		if (!OidIsValid(prm->ptype) ||
-			prm->ptype != param->paramtype ||
-			!(prm->pflags & PARAM_FLAG_CONST))
+			prm->ptype != param->paramtype)
 		{
 			/* Planner should ensure this does not happen */
 			elog(ERROR, "Invalid parameter: %s", nodeToString(param));

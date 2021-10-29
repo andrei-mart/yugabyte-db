@@ -118,11 +118,14 @@ static SetOp *create_setop_plan(PlannerInfo *root, SetOpPath *best_path,
 static RecursiveUnion *create_recursiveunion_plan(PlannerInfo *root, RecursiveUnionPath *best_path);
 static LockRows *create_lockrows_plan(PlannerInfo *root, LockRowsPath *best_path,
 					 int flags);
-static bool yb_single_row_update_or_delete_path(PlannerInfo *root, ModifyTablePath *path,
-				List **result_tlist, List **modify_tlist,
-				List **column_refs,
-				bool *no_row_trigger,
-				List **no_update_index_list);
+static bool yb_single_row_update_or_delete_path(PlannerInfo *root,
+									ModifyTablePath *path,
+									List **modify_tlist,
+									List **column_refs,
+									List **result_tlist,
+									List **returning_cols,
+									bool *no_row_trigger,
+									List **no_update_index_list);
 static ModifyTable *create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path);
 static Limit *create_limit_plan(PlannerInfo *root, LimitPath *best_path,
 				  int flags);
@@ -2501,25 +2504,54 @@ static bool has_applicable_triggers(Relation rel, CmdType operation, Bitmapset *
 }
 
 /*
- * Returns whether a path can support a YB single row modify. This will be
- * non-transactional if execution time criteria are met, otherwise it just
- * avoids an unnecessary scan.
+ * yb_single_row_update_or_delete_path
  *
- * This is currently used for UPDATE/DELETE to determine whether to substitute
- * the index scan with a direct result node containing the primary key values
- * and any UPDATE SET values.
+ * Returns whether a path can support a YB single row modify. The advantage of
+ * a single row modify is that it takes only one RPC request/response cycle to
+ * update single row by primary key. Regular modify takes one RPC to retrieve
+ * the ybctid, and another to modify the row by ybctid. If the WHERE clause
+ * provides all the primary key values, the ybctid can be calculated without
+ * having to make RPC call. That is the main criteria, indicating that single
+ * row modify is possible.
  *
- * This also populates the tlist with the final target list for the result plan
- * (including primary key, SET (for UPDATE), and unspecified column values), and
- * populates update_attrs with the attribute numbers of the columns specified
- * in the UPDATE clause.
+ * There is a number of reasons why single row modify can not be done. The
+ * function checks them, and if none of them applies, it returns true and it
+ * populates var arguments along the way with the values necessary to setup the
+ * query plan nodes.
+ *
+ * Expressions in the SET clause of UPDATE play important role. DocDB has
+ * limited supports for Postgres expression evaluation, so we push supported
+ * set clause expressions down to DocDB if pushdown is enabled in GUC. Those
+ * expressions go to the modify_tlist. These may refer columns of the current
+ * rows, those references go to the column_refs list as YbExprParamDesc nodes.
+ * DocDB uses it to convert values from native format to Postgres before
+ * evaluation.
+ *
+ * Not pushable expression can be evaluated in the context of the Result node
+ * if they refer no columns (constant expressions). Those expressions are
+ * returned in the result_tlist. If any SET clause expression is neither
+ * pushable nor constant, single row modify can not be performed.
+ * The result_tlist also contains the values for the primary key columns
+ * extracted from the WHERE clause. Primary key values in the result_tlist are
+ * defined in both UPDATE and DELETE cases.
+ *
+ * The returning_cols list contains YbExprParamDesc nodes that represent
+ * columns that need to be fetched from DocDB. The reason why we may need to
+ * fetch some values is that the tuple produced by the Result node is generally
+ * incomplete, it contains only the primary key values, and values from
+ * evaluation of SET clause expression that are not pushed down. If any other
+ * column value is needed for post-modify tasks like evaluate the RETURNING
+ * clause expressions it should be fetched. That is not a big deal, the RPC
+ * request that is sent anyway can carry data row, but we need make a list of
+ * the columns to request.
  */
 static bool
 yb_single_row_update_or_delete_path(PlannerInfo *root,
 									ModifyTablePath *path,
-									List **result_tlist,
 									List **modify_tlist,
 									List **column_refs,
+									List **result_tlist,
+									List **returning_cols,
 									bool *no_row_trigger,
 									List **no_update_index_list)
 {
@@ -2872,6 +2904,88 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	}
 
 	/*
+	 * The returning clause can not prevent single row modify, however, if
+	 * any of the columns referenced by the returning clause expressions is
+	 * modified by a pushdown expression, new values would need to be retrieved
+	 * from the DocDB. Without pushdown the slot coming from either Result or
+	 * original plan would provide correct values.
+	 */
+	if (path->returningLists)
+	{
+		bool retrieve = false;
+		List *references = NIL;
+		/*
+		 * Iterate over all variables referenced by the returning clause
+		 * expressions.
+		 */
+		List *vars = pull_vars_of_level((Node *) path->returningLists, 0);
+		foreach (lc, vars)
+		{
+			Var *var_expr = lfirst_node(Var, lc);
+			AttrNumber attno = var_expr->varattno;
+			YbExprParamDesc *reference;
+
+			/* DocDB does not store system attributes */
+			if (!AttrNumberIsForUserDefinedAttr(attno))
+			{
+				continue;
+			}
+
+			/*
+			 * When referenced attribute is pushed down the real value is only
+			 * known when DocDB evaluates it, so retrieval is required.
+			 * Otherwise there are cases when correct value presents in the
+			 * Result's slot. Those cases include:
+			 * - attributes updated with result of a non-pushable expressions;
+			 * - primary key attributes.
+			 * If referenced column does not fall into one of those cases, we
+			 * still have tor retrieve the values.
+			 * For DELETE case only primary key works. Presence of non-PK
+			 * attributes in the returning clause require retrieval.
+			 */
+			if (bms_is_member(attno - attr_offset, pushdown_update_attrs) ||
+				(!bms_is_member(attno - attr_offset, update_attrs) &&
+				 !bms_is_member(attno - attr_offset, primary_key_attrs)))
+			{
+				retrieve = true;
+			}
+
+			/*
+			 * Create column reference entry regardless of current retrieve
+			 * value. They all are needed if it is figured out that retrieval
+			 * is required. DocDB gate does not update existing tuple's values,
+			 * it fetches new tuple, and we need to fetch every value that may
+			 * bee needed.
+			 */
+			reference =  makeNode(YbExprParamDesc);
+			reference->attno = attno;
+			reference->typid = var_expr->vartype;
+			reference->typmod = var_expr->vartypmod;
+			reference->collid = var_expr->varcollid;
+			references = lappend(references, reference);
+		}
+
+		/* Cleanup */
+		list_free(vars);
+		if (retrieve)
+		{
+			/*
+			 * Found pushdown columns referenced from the returning clause,
+			 * return collected references.
+			 */
+			*returning_cols = references;
+		}
+		else
+		{
+			/*
+			 * No pushdown columns referenced from the returning clause,
+			 * discard the list.
+			 */
+			list_free_deep(references);
+		}
+	}
+
+	/*
 	 * At this point all checks passed so construct the final target lists.
 	 * This will use the following vars prepared above:
 	 *  - indexquals array which has the targets for all primary key columns.
@@ -2957,6 +3071,7 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 
 	List	   *result_tlist = NIL;
 	List	   *modify_tlist = NIL;
+	List	   *returning_cols = NIL;
 	List	   *column_refs = NIL;
 	bool		no_row_trigger = false;
 	List	   *no_update_index_list = NIL;
@@ -2967,9 +3082,9 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 	 * running outside of a transaction and thus cannot rely on the results from a
 	 * separately executed operation.
 	 */
-	if (yb_single_row_update_or_delete_path(root, best_path, &result_tlist,
-											&modify_tlist, &column_refs,
-											&no_row_trigger,
+	if (yb_single_row_update_or_delete_path(root, best_path, &modify_tlist,
+											&column_refs, &result_tlist,
+											&returning_cols, &no_row_trigger,
 											best_path->operation == CMD_UPDATE ?
 												&no_update_index_list : NULL))
 	{
@@ -3024,6 +3139,7 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 							best_path->epqParam);
 
 	plan->ybPushdownTlist = modify_tlist;
+	plan->ybReturningColumns = returning_cols;
 	plan->ybColumnRefs = column_refs;
 	plan->no_update_index_list = no_update_index_list;
 	plan->no_row_trigger = no_row_trigger;
@@ -7098,8 +7214,9 @@ make_modifytable(PlannerInfo *root,
 	node->fdwDirectModifyPlans = direct_modify_plans;
 
 	/* These are set separately only if needed. */
-	node->ybPushdownTlist = NULL;
-	node->no_update_index_list = NULL;
+	node->ybPushdownTlist = NIL;
+	node->ybReturningColumns = NIL;
+	node->no_update_index_list = NIL;
 	node->no_row_trigger = false;
 	return node;
 }

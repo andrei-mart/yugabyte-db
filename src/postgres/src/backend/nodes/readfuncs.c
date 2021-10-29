@@ -1606,6 +1606,7 @@ _readModifyTable(void)
 	READ_UINT_FIELD(exclRelRTI);
 	READ_NODE_FIELD(exclRelTlist);
 	READ_NODE_FIELD(ybPushdownTlist);
+	READ_NODE_FIELD(ybReturningColumns);
 	READ_NODE_FIELD(ybColumnRefs);
 	READ_NODE_FIELD(no_update_index_list);
 	READ_BOOL_FIELD(no_row_trigger);
