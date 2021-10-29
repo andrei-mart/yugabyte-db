@@ -713,10 +713,6 @@ YBCStatus YBCPgExecUpdate(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecUpdate(handle));
 }
 
-bool YBCGetEnableUpdateBatching() {
-  return FLAGS_ysql_enable_update_batching;
-}
-
 // DELETE Operations -------------------------------------------------------------------------------
 YBCStatus YBCPgNewDelete(const YBCPgOid database_oid,
                          const YBCPgOid table_oid,
