@@ -35,5 +35,5 @@ const uint32 yb_funcs_safe_for_pushdown[] = {
 };
 
 const int yb_funcs_safe_for_pushdown_count =
-  sizeof(yb_funcs_safe_for_pushdown) /
-  sizeof(yb_funcs_safe_for_pushdown[0]);
+	sizeof(yb_funcs_safe_for_pushdown) /
+	sizeof(yb_funcs_safe_for_pushdown[0]);

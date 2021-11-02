@@ -88,14 +88,9 @@ static bool ModifyTableIsSingleRowWrite(ModifyTable *modifyTable)
 		{
 			/* Simple values clause: one valueset (single row) */
 			Result *values = (Result *)linitial(modifyTable->plans);
-			ListCell *lc;
-			foreach(lc, values->plan.targetlist)
+			if (YbTransactionalExpr((Node *) values->plan.targetlist))
 			{
-				TargetEntry *target = (TargetEntry *) lfirst(lc);
-				if (!YbCanPushdownExpr(target->expr, NULL))
-				{
-					return false;
-				}
+				return false;
 			}
 			break;
 		}

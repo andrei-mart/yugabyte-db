@@ -173,15 +173,15 @@ bool yb_can_pushdown_func(Oid funcid)
 		return false;
 	}
 
-        /*                                                                                           
-         * Check whether this function is on a list of hand-picked functions 
-         * safe for pushdown.                   
-         */                                                                                          
-        for (int i = 0; i < yb_funcs_safe_for_pushdown_count; ++i)                                   
-        {                                                                                            
-                if (funcid == yb_funcs_safe_for_pushdown[i])                                         
-                        return true;                                                                 
-        }                                                                                            
+	/*
+	 * Check whether this function is on a list of hand-picked functions
+	 * safe for pushdown.
+	 */
+	for (int i = 0; i < yb_funcs_safe_for_pushdown_count; ++i)
+	{
+		if (funcid == yb_funcs_safe_for_pushdown[i])
+			return true;
+	}
 
 	tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
 	if (!HeapTupleIsValid(tuple))
@@ -330,6 +330,98 @@ bool YbCanPushdownExpr(Expr *pg_expr, List **params)
 		return false;
 
 	return !yb_pushdown_walker((Node *) pg_expr, params);
+}
+
+/*
+ * yb_transactional_walker
+ *
+ *	  Expression tree walker for the YbTransactionalExpr function.
+ *	  As of initial version, it may be too optimistic, needs revisit.
+ */
+bool yb_transactional_walker(Node *node, void *context)
+{
+	if (node == NULL)
+		return false;
+	switch (node->type)
+	{
+		case T_FuncExpr:
+		{
+			/*
+			 * Function may be everything, unless it is immutable
+			 * By definition, immutable functions can not access database.
+			 * Otherwise safely assume the function needs distributed transaction.
+			 */
+			FuncExpr	   *func_expr = castNode(FuncExpr, node);
+			Oid 			funcid = func_expr->funcid;
+			HeapTuple		tuple;
+			Form_pg_proc	pg_proc;
+			tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
+			if (!HeapTupleIsValid(tuple))
+				elog(ERROR, "cache lookup failed for function %u", funcid);
+			pg_proc = (Form_pg_proc) GETSTRUCT(tuple);
+			if (pg_proc->provolatile != PROVOLATILE_IMMUTABLE)
+			{
+				ReleaseSysCache(tuple);
+				return true;
+			}
+			ReleaseSysCache(tuple);
+			break;
+		}
+		/*
+		 * The list of the expression types below was built by scrolling over
+		 * expression_tree_walker function and selecting those looking like they
+		 * do suspiciously transactional thing like running a subquery.
+		 */
+		case T_NextValueExpr:
+		case T_RangeTblRef:
+		case T_SubLink:
+		case T_SubPlan:
+		case T_AlternativeSubPlan:
+		case T_Query:
+		case T_CommonTableExpr:
+		case T_FromExpr:
+		case T_JoinExpr:
+		case T_AppendRelInfo:
+		case T_RangeTblFunction:
+		case T_TableSampleClause:
+		case T_TableFunc:
+			return true;
+		/*
+		 * Optimistically assume all other expression types are not transactional.
+		 */
+		default:
+			break;
+	}
+	return expression_tree_walker(node, yb_transactional_walker, context);
+}
+
+/*
+ * YbTransactionalExpr
+ *
+ *	  Determine if the expression may need distributed transaction.
+ *	  One shard modify table queries (INSERT, UPDATE, DELETE) running in
+ *	  autocommit mode may skip starting distributed transactions. Without
+ *	  distributed transaction overhead those statements perform much better.
+ *	  However, certain expression may need to run a subquery or otherwise
+ *	  access multiple nodes transactionally. This function checks if that
+ *	  might be the case for given expression, and therefore distributed
+ *	  transaction should be used for parent statement.
+ *	  Historically the same function was used to determine if an expression
+ *	  is pushable or if expression is (not) transactional, out of consideration
+ *	  that if expression is simple enough to be pushable, it is not
+ *	  transactional. That is generally true, pushable expression are not
+ *	  transactional, however there are many not pushable expressions, which are
+ *	  not transactional at the same time, so we can still benefit from higher
+ *	  performing one shard queries even if they use not pushable expressions.
+ *	  Besides, expression pushdown may be turned off with a GUC parameter.
+ *	  If this function misdetermine transactional expression as not
+ *	  transactional distributed transaction may be forced by surrounding the
+ *	  statement with BEGiN; ... COMMIT;
+ *	  Opposite misdetermination causes performance overhead only.
+ */
+bool YbTransactionalExpr(Node *pg_expr)
+{
+	return yb_transactional_walker(pg_expr, NULL);
 }
 
 /*
