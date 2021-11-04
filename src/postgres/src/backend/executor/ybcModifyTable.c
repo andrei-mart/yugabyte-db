@@ -560,6 +560,8 @@ bool YBCExecuteDelete(Relation rel, TupleTableSlot *slot, EState *estate,
 										   false /* is_null */);
 	HandleYBStatus(YBCPgDmlBindColumn(delete_stmt, YBTupleIdAttributeNumber, ybctid_expr));
 
+	tupleDesc = RelationGetDescr(rel);
+
 	/* Delete row from foreign key cache */
 	YBCPgDeleteFromForeignKeyReferenceCache(relid, ybctid);
 
@@ -634,6 +636,13 @@ bool YBCExecuteDelete(Relation rel, TupleTableSlot *slot, EState *estate,
 		 */
 		slot->tts_nvalid = tupleDesc->natts;
 		slot->tts_isempty = false;
+
+		/*
+		 * The Result is getting dummy TLEs in place of missing attributes,
+		 * so we should fix the tuple table slot's descriptor before
+		 * the RETURNING clause expressions are evaluated.
+		 */
+		slot->tts_tupleDescriptor = CreateTupleDescCopyConstr(tupleDesc);
 	}
 
 	/* Cleanup. */
@@ -842,6 +851,13 @@ bool YBCExecuteUpdate(Relation rel,
 		 */
 		slot->tts_nvalid = tupleDesc->natts;
 		slot->tts_isempty = false;
+
+		/*
+		 * The Result is getting dummy TLEs in place of missing attributes,
+		 * so we should fix the tuple table slot's descriptor before
+		 * the RETURNING clause expressions are evaluated.
+		 */
+		slot->tts_tupleDescriptor = CreateTupleDescCopyConstr(tupleDesc);
 	}
 
 	/* Cleanup. */
