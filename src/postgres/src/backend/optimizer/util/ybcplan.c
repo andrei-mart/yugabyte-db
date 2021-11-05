@@ -82,13 +82,17 @@ static bool ModifyTableIsSingleRowWrite(ModifyTable *modifyTable)
 	if (list_length(modifyTable->plans) != 1)
 		return false;
 
+	/* Check if returning clause contains complex expressions */
+	if (YbIsTransactionalExpr((Node *) modifyTable->returningLists))
+		return false;
+
 	switch nodeTag(linitial(modifyTable->plans))
 	{
 		case T_Result:
 		{
 			/* Simple values clause: one valueset (single row) */
-			Result *values = (Result *)linitial(modifyTable->plans);
-			if (YbTransactionalExpr((Node *) values->plan.targetlist))
+			Result *values = (Result *) linitial(modifyTable->plans);
+			if (YbIsTransactionalExpr((Node *) values->plan.targetlist))
 			{
 				return false;
 			}

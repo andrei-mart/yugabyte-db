@@ -52,7 +52,7 @@ extern Expr *YbExprInstantiateParams(Expr* expr, ParamListInfo paramLI);
 
 extern bool YbCanPushdownExpr(Expr *pg_expr, List **params);
 
-extern bool YbTransactionalExpr(Node *pg_expr);
+extern bool YbIsTransactionalExpr(Node *pg_expr);
 
 YBCPgExpr YBCNewEvalExprCall(YBCPgStatement ybc_stmt, Expr *pg_expr);
 

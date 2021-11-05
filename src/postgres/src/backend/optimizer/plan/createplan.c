@@ -2558,6 +2558,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	RelOptInfo *relInfo = NULL;
 	Oid relid;
 	Relation relation;
+	TupleDesc tupDesc;
 	Path *subpath;
 	PlannerInfo *subroot;
 	IndexPath *index_path;
@@ -2646,6 +2647,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 
 	/* Ensure we close the relation before returning. */
 	relation = RelationIdGetRelation(relid);
+	tupDesc = RelationGetDescr(relation);
 	attr_offset = YBGetFirstLowInvalidAttributeNumber(relation);
 
 	subroot = linitial_node(PlannerInfo, path->subroots);
@@ -2682,6 +2684,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 		foreach(values, build_path_tlist(subroot, subpath))
 		{
 			TargetEntry *tle = lfirst_node(TargetEntry, values);
+			int resno = tle->resno;
 
 			/* Ignore unspecified columns. */
 			if (IsA(tle->expr, Var))
@@ -2692,7 +2695,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 				 * (added for YB scan in rewrite handler).
 				 */
 				if (var->varattno == InvalidAttrNumber ||
-					var->varattno == tle->resno ||
+					var->varattno == resno ||
 					(var->varattno == YBTupleIdAttributeNumber &&
 						var->varcollid == InvalidOid))
 				{
@@ -2710,8 +2713,31 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 			subpath_tlist = lappend(subpath_tlist, tle);
 			update_attrs = bms_add_member(update_attrs, tle->resno - attr_offset);
 
-			/* Verify expression is supported. */
-			if (!YbCanPushdownExpr(tle->expr, column_refs))
+			/*
+			 * We can not push down an expression for a column with not null
+			 * constraint, since constraint checks happen before DocDB request
+			 * is sent, and actual value is needed to evaluate the constraint.
+			 *
+			 * Updates involving non-C collation columns cannot do pushdown.
+			 * If an indexed column id has a non-C collation and we have in an
+			 * UPDATE statement set id = id || 'a'. After evaluating id || 'a',
+			 * we need to write a collation-encoded string of the result back to
+			 * column id. This requires computing a collation sort key of the
+			 * text result and needs postgres collation info but that is not
+			 * accessible in the tablet server. We can allow pushdown if we can
+			 * detect that column id is not a key-column. In that case we just
+			 * need to store the result itself with no collation-encoding.
+			 *
+			 * Naturally, expression can not be pushed down if there are
+			 * elements not supported by DocDB.
+			 * 
+			 * However, if not pushable expression does not refer any target
+			 * table column, the Result node can evaluate it, and the statement
+			 * would still be one row.
+			 */
+			if ((resno > 0 && tupDesc->attrs[resno - 1].attnotnull) ||
+			    YBIsCollationValidNonC(ybc_get_attcollation(tupDesc, resno)) ||
+				!YbCanPushdownExpr(tle->expr, column_refs))
 			{
 				/*
 				 * If the expression is not pushable, it is still may be added
@@ -2726,24 +2752,6 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 				RelationClose(relation);
 				return false;
 			}
-
-			int resno = tle->resno;
-			TupleDesc tupleDesc = RelationGetDescr(relation);
-			Oid target_collation_id = ybc_get_attcollation(tupleDesc, resno);
-
-			/*
-			 * Updates involving non-C collation columns cannot do pushdown.
-			 * If an indexed column id has a non-C collation and we have in an
-			 * UPDATE statement set id = id || 'a'. After evaluating id || 'a',
-			 * we need to write a collation-encoded string of the result back to
-			 * column id. This requires computing a collation sort key of the
-			 * text result and needs postgres collation info but that is not
-			 * accessible in the tablet server. We can allow pushdown if we can
-			 * detect that column id is not a key-column. In that case we just
-			 * need to store the result itself with no collation-encoding.
-			 */
-			if (YBIsCollationValidNonC(target_collation_id))
-				continue;
 
 			pushdown_update_attrs = bms_add_member(pushdown_update_attrs,
 												   tle->resno - attr_offset);
@@ -2776,7 +2784,6 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	 * Cannot allow check constraints for single-row update as we will need
 	 * to ensure we read all columns they reference to check them correctly.
 	 */
-	TupleDesc tupDesc = RelationGetDescr(relation);
 	if (path->operation == CMD_UPDATE &&
 		tupDesc->constr &&
 		tupDesc->constr->num_check > 0)

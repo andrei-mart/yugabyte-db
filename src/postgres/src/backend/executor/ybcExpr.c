@@ -285,12 +285,25 @@ bool yb_pushdown_walker(Node *node, List **params)
 			Param *p = castNode(Param, node);
 			if (p->paramkind != PARAM_EXTERN ||
 					!YBCPgFindTypeEntity(p->paramtype))
+			{
 				return true;
+			}
+			break;
+		}
+		case T_Const:
+		{
+			Const *c = castNode(Const, node);
+			/*
+			* Constant value may need to be converted to DocDB format, but
+			* DocDB does not support arbitrary types.
+			*/
+			if (!YBCPgFindTypeEntity((c->consttype))) {
+				return true;
+			}
 			break;
 		}
 		case T_RelabelType:
 		case T_NullTest:
-		case T_Const:
 		case T_BoolExpr:
 			break;
 		default:
@@ -335,7 +348,7 @@ bool YbCanPushdownExpr(Expr *pg_expr, List **params)
 /*
  * yb_transactional_walker
  *
- *	  Expression tree walker for the YbTransactionalExpr function.
+ *	  Expression tree walker for the YbIsTransactionalExpr function.
  *	  As of initial version, it may be too optimistic, needs revisit.
  */
 bool yb_transactional_walker(Node *node, void *context)
@@ -396,7 +409,7 @@ bool yb_transactional_walker(Node *node, void *context)
 }
 
 /*
- * YbTransactionalExpr
+ * YbIsTransactionalExpr
  *
  *	  Determine if the expression may need distributed transaction.
  *	  One shard modify table queries (INSERT, UPDATE, DELETE) running in
@@ -419,7 +432,7 @@ bool yb_transactional_walker(Node *node, void *context)
  *	  statement with BEGiN; ... COMMIT;
  *	  Opposite misdetermination causes performance overhead only.
  */
-bool YbTransactionalExpr(Node *pg_expr)
+bool YbIsTransactionalExpr(Node *pg_expr)
 {
 	return yb_transactional_walker(pg_expr, NULL);
 }

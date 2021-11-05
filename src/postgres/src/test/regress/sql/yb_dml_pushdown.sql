@@ -1,5 +1,6 @@
--- Regression tests for UPDATE/DELETE single row operations.
--- Expression pushdown is disabled (current default).
+-- These tests for UPDATE/DELETE single row operations are forked off of yb_dml_single_row
+-- and test approximately same statements when expression pushdown is enabled
+SET yb_enable_expression_pushdown to on;
 
 --
 -- Test that single-row UPDATE/DELETEs bypass scan.
@@ -23,29 +24,29 @@ EXPLAIN (COSTS FALSE) DELETE FROM single_row WHERE k IN (1, 2);
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k = 1 RETURNING k, v1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1, v2 = 1 + 2 WHERE k = 1;
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1, v2 = 2 WHERE k = 1 RETURNING k, v1, v2;
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1, v2 = 2 WHERE k = 1 RETURNING *;
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k IN (1);
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 3 + 2 WHERE k = 1;
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = power(2, 3 - 1) WHERE k = 1;
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k = 1 RETURNING v2;
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k = 1 RETURNING *;
-
--- Below statements should all NOT USE single-row.
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1;
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = v1 + 3 WHERE k = 1;
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = v1 * 2 WHERE k = 1;
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = v1 + 1 WHERE k = 1 RETURNING v1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = v1 + v2 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = v2 + 1 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1, v2 = v1 + v2 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = v2 + 1, v2 = 1 WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1, v2 = 2 WHERE k = 1 RETURNING k, v1, v2;
+EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1, v2 = 2 WHERE k = 1 RETURNING *;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = v1 + 1, v2 = 2 WHERE k = 1 RETURNING v2;
+EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k IN (1);
+EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 3 + 2 WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = power(2, 3 - 1) WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = v1 + 3 WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = v1 * 2 WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = power(2, 3 - k) WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k = 1 RETURNING v2;
+EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = v1 + 1 WHERE k = 1 RETURNING v1;
+EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k = 1 RETURNING *;
+
+-- Below statements should all NOT USE single-row.
+EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k = 1 and v2 = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k > 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k != 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k IN (1, 2);
-EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = power(2, 3 - k) WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k % 2 = 0;
 
 --
@@ -198,19 +199,19 @@ EXPLAIN (COSTS FALSE) DELETE FROM single_row_comp_key WHERE k1 = 1 AND k2 != 1;
 
 -- Below statements should all USE single-row.
 EXPLAIN (COSTS FALSE) UPDATE single_row_comp_key SET v = 1 WHERE k1 = 1 and k2 = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row_comp_key SET v = k1 + 1 WHERE k1 = 1 and k2 = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_comp_key SET v = 1 WHERE k1 = 1 and k2 = 1 RETURNING k1, k2, v;
 EXPLAIN (COSTS FALSE) UPDATE single_row_comp_key SET v = 1 + 2 WHERE k1 = 1 and k2 = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row_comp_key SET v = v + 1 WHERE k1 = 1 and k2 = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 3 - 2 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = ceil(3 - 2.5) WHERE k = 1;
-
--- Below statements should all NOT USE single-row.
-EXPLAIN (COSTS FALSE) UPDATE single_row_comp_key SET v = 1;
-EXPLAIN (COSTS FALSE) UPDATE single_row_comp_key SET v = v + 1 WHERE k1 = 1 and k2 = 1;
-EXPLAIN (COSTS FALSE) UPDATE single_row_comp_key SET v = k1 + 1 WHERE k1 = 1 and k2 = 1;
-EXPLAIN (COSTS FALSE) UPDATE single_row_comp_key SET v = 1 WHERE k1 = 1 and k2 = 1 and v = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 3 - v1 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 3 - k WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = v1 - k WHERE k = 1;
+
+-- Below statements should all NOT USE single-row.
+EXPLAIN (COSTS FALSE) UPDATE single_row_comp_key SET v = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row_comp_key SET v = 1 WHERE k1 = 1 and k2 = 1 and v = 1;
 
 -- Test the impact of functions on single row optimization.
 CREATE TABLE single_row_function_test (k INTEGER NOT NULL, date_pk TIMESTAMPTZ, random_field INTEGER, v varchar, created_at TIMESTAMP, PRIMARY KEY(k, date_pk));
@@ -259,13 +260,13 @@ EXPLAIN (COSTS FALSE) DELETE FROM single_row_complex WHERE v = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_complex SET v = 1 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_complex SET v = 1 WHERE k = 1 RETURNING k, v;
 EXPLAIN (COSTS FALSE) UPDATE single_row_complex SET v = 1 + 2 WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex SET v = v + 1 WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex SET v = 3 * (v + 3 - 2) WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex SET v = k + 1 WHERE k = 1;
 
 -- Below statements should all NOT USE single-row.
 EXPLAIN (COSTS FALSE) UPDATE single_row_complex SET v = 1;
-EXPLAIN (COSTS FALSE) UPDATE single_row_complex SET v = k + 1 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_complex SET v = 1 WHERE k = 1 and v = 1;
-EXPLAIN (COSTS FALSE) UPDATE single_row_complex SET v = v + 1 WHERE k = 1;
-EXPLAIN (COSTS FALSE) UPDATE single_row_complex SET v = 3 * (v + 3 - 2) WHERE k = 1;
 
 -- Test execution.
 INSERT INTO single_row_complex VALUES (1, 1);
@@ -317,57 +318,57 @@ CREATE FUNCTION assign_one_plus_param_to_v1_hard(integer) RETURNS two_int
 
 -- Below statements should all USE single-row.
 -- (1) Constant
-EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = 1 WHERE k = 1 RETURNING 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING 1;
 -- (2) Column reference
-EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = 2 WHERE k = 1 RETURNING v2, v3, array_int;
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING v2, v3, array_int;
 -- (3) Subscript
-EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = 3 WHERE k = 1 RETURNING array_int[1];
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING array_int[1];
 -- (4) Field selection
-EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = 4 WHERE k = 1 RETURNING (v3).first_text;
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING (v3).first_text;
 -- (5) Immutable Operator Invocation
-EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = 5 WHERE k = 1 RETURNING v2||'abc';
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING v2||'abc';
 -- (6) Immutable Function Call
-EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = 6 WHERE k = 1 RETURNING power(v5, 2);
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING power(v5, 2);
 -- (7) Type Cast
-EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = 7 WHERE k = 1 RETURNING v5::text;
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING v5::text;
 -- (8) Collation Expression
-EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = 8 WHERE k = 1 RETURNING v2 COLLATE "C";
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING v2 COLLATE "C";
 -- (9) Array Constructor
-EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = 9 WHERE k = 1 RETURNING ARRAY[[v1,2,v5], [2,3,v5+1]];
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING ARRAY[[v1,2,v5], [2,3,v5+1]];
 -- (10) Row Constructor
-EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = 10 WHERE k = 1 RETURNING ROW(1,v2,v3,v5);
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING ROW(1,v2,v3,v5);
 -- (11) Scalar Subquery
-EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = 11 WHERE k = 1 RETURNING (SELECT MAX(v5)+1 from single_row_complex_returning);
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING (SELECT MAX(v5)+1 from single_row_complex_returning);
 -- (12) Mutable function
-EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = 12 WHERE k = 1 RETURNING assign_one_plus_param_to_v1(1);
-EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = 12 WHERE k = 1 RETURNING assign_one_plus_param_to_v1(v1);
-EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = 12 WHERE k = 1 RETURNING assign_one_plus_param_to_v1_hard(v1);
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING assign_one_plus_param_to_v1(1);
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING assign_one_plus_param_to_v1(v1);
+EXPLAIN (COSTS FALSE) UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING assign_one_plus_param_to_v1_hard(v1);
 
 -- Test execution
 INSERT INTO single_row_complex_returning VALUES (1, 1, 'xyz', ('a','b'), '{11, 11, 11}', 1);
 
-UPDATE single_row_complex_returning SET v1 = 1 WHERE k = 1 RETURNING 1, v2, array_int[1], (v3).first_text;
+UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING 1, v2, array_int[1], (v3).first_text;
 SELECT * FROM single_row_complex_returning;
 
-UPDATE single_row_complex_returning SET v1 = 2 WHERE k = 1 RETURNING v2||'abc', power(v5, 2), v5::text, v2 COLLATE "C";
+UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING v2||'abc', power(v5, 2), v5::text, v2 COLLATE "C";
 SELECT * FROM single_row_complex_returning;
 
-UPDATE single_row_complex_returning SET v1 = 3 WHERE k = 1 RETURNING ARRAY[[v1,2,v5], [2,3,v5+1]];
+UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING ARRAY[[v1,2,v5], [2,3,v5+1]];
 SELECT * FROM single_row_complex_returning;
 
-UPDATE single_row_complex_returning SET v1 = 4 WHERE k = 1 RETURNING ROW(1,v2,v3,v5);
+UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING ROW(1,v2,v3,v5);
 SELECT * FROM single_row_complex_returning;
 
-UPDATE single_row_complex_returning SET v1 = 5 WHERE k = 1 RETURNING (SELECT MAX(v5)+1 from single_row_complex_returning);
+UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING (SELECT MAX(v5)+1 from single_row_complex_returning);
 SELECT * FROM single_row_complex_returning;
 
-UPDATE single_row_complex_returning SET v1 = 6 WHERE k = 1 RETURNING assign_one_plus_param_to_v1(1);
+UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING assign_one_plus_param_to_v1(1);
 SELECT * FROM single_row_complex_returning;
 
-UPDATE single_row_complex_returning SET v1 = 7 WHERE k = 1 RETURNING assign_one_plus_param_to_v1(v1);
+UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING assign_one_plus_param_to_v1(v1);
 SELECT * FROM single_row_complex_returning;
 
-UPDATE single_row_complex_returning SET v1 = 8 WHERE k = 1 RETURNING assign_one_plus_param_to_v1_hard(v1);
+UPDATE single_row_complex_returning SET v1 = v1 + 1 WHERE k = 1 RETURNING assign_one_plus_param_to_v1_hard(v1);
 SELECT * FROM single_row_complex_returning;
 
 --
@@ -395,13 +396,13 @@ EXPLAIN (COSTS FALSE) DELETE FROM single_row_range_asc_primary_key WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_range_asc_primary_key SET v = 1 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_range_asc_primary_key SET v = 1 + 2 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_range_asc_primary_key SET v = ceil(2.5 + power(2,2)) WHERE k = 4;
+EXPLAIN (COSTS FALSE) UPDATE single_row_range_asc_primary_key SET v = v + 1 WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row_range_asc_primary_key SET v = v + k WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row_range_asc_primary_key SET v = abs(5 - k) WHERE k = 1;
 
 -- Below statements should all NOT USE single-row.
 EXPLAIN (COSTS FALSE) UPDATE single_row_range_asc_primary_key SET v = 1 WHERE k > 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_range_asc_primary_key SET v = 1 WHERE k != 1;
-EXPLAIN (COSTS FALSE) UPDATE single_row_range_asc_primary_key SET v = v + 1 WHERE k = 1;
-EXPLAIN (COSTS FALSE) UPDATE single_row_range_asc_primary_key SET v = v + k WHERE k = 1;
-EXPLAIN (COSTS FALSE) UPDATE single_row_range_asc_primary_key SET v = abs(5 - k) WHERE k = 1;
 
 -- Test execution
 INSERT INTO single_row_range_asc_primary_key(k,v) values (1,1), (2,2), (3,3), (4,4);
@@ -429,13 +430,13 @@ EXPLAIN (COSTS FALSE) DELETE FROM single_row_range_desc_primary_key WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_range_desc_primary_key SET v = 1 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_range_desc_primary_key SET v = 1 + 2 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_range_desc_primary_key SET v = ceil(2.5 + power(2,2)) WHERE k = 4;
+EXPLAIN (COSTS FALSE) UPDATE single_row_range_desc_primary_key SET v = v + 1 WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row_range_desc_primary_key SET v = k + 1 WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row_range_desc_primary_key SET v = abs(5 - k) WHERE k = 1;
 
 -- Below statements should all NOT USE single-row.
 EXPLAIN (COSTS FALSE) UPDATE single_row_range_desc_primary_key SET v = 1 WHERE k > 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_range_desc_primary_key SET v = 1 WHERE k != 1;
-EXPLAIN (COSTS FALSE) UPDATE single_row_range_desc_primary_key SET v = v + 1 WHERE k = 1;
-EXPLAIN (COSTS FALSE) UPDATE single_row_range_desc_primary_key SET v = k + 1 WHERE k = 1;
-EXPLAIN (COSTS FALSE) UPDATE single_row_range_desc_primary_key SET v = abs(5 - k) WHERE k = 1;
 
 -- Test execution
 INSERT INTO single_row_range_desc_primary_key(k,v) values (1,1), (2,2), (3,3), (4,4);
@@ -469,12 +470,12 @@ EXPLAIN (COSTS FALSE) UPDATE single_row_not_null_constraints SET v2 = 2 WHERE k 
 EXPLAIN (COSTS FALSE) UPDATE single_row_not_null_constraints SET v2 = v2 + null WHERE k = 1;
 
 -- Below statements should all NOT USE single-row.
-EXPLAIN (COSTS FALSE) UPDATE single_row_not_null_constraints SET v2 = v2 + 3 WHERE k = 1;
-EXPLAIN (COSTS FALSE) UPDATE single_row_not_null_constraints SET v1 = abs(v1), v2 = power(v2,2) WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_check_constraints SET v1 = 2 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_check_constraints SET v2 = 2 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_check_constraints2 SET v1 = 2 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_check_constraints2 SET v2 = 2 WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row_not_null_constraints SET v2 = v2 + 3 WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row_not_null_constraints SET v1 = abs(v1), v2 = power(v2,2) WHERE k = 1;
 
 -- Test execution.
 INSERT INTO single_row_not_null_constraints(k,v1, v2) values (1,1,1), (2,2,2), (3,3,3);
@@ -512,16 +513,15 @@ CREATE TABLE single_row_decimal (k int PRIMARY KEY, v1 decimal, v2 decimal(10,2)
 
 -- Below statements should all USE single-row.
 EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v1 = 1.555 WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v1 = v1 + 1.555 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v2 = 1.555 WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v2 = v2 + 1.555 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v3 = 1 WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v3 = v3 + 1 WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v1 = v1 + 1.555, v2 = v2 + 1.555, v3 = v3 + 1 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v1 = v1 + null WHERE k = 2;
 EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v2 = null + v2 WHERE k = 2;
 EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v3 = v3 + 4 * (null - 5) WHERE k = 2;
--- Below statements should all NOT USE single-row.
-EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v1 = v1 + 1.555 WHERE k = 1;
-EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v2 = v2 + 1.555 WHERE k = 1;
-EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v3 = v3 + 1 WHERE k = 1;
-EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v1 = v1 + 1.555, v2 = v2 + 1.555, v3 = v3 + 1 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v1 = v2 + 1.555 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v2 = k + 1.555 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v3 = k - v3 WHERE k = 1;
@@ -555,15 +555,15 @@ ALTER TABLE single_row_decimal ADD FOREIGN KEY (v3) REFERENCES single_row_decima
 
 -- Below statements should all USE single-row.
 EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v1 = 1.555 WHERE k = 4;
-EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v2 = 1.555 WHERE k = 4;
-
--- Below statements should all NOT USE single-row.
 EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v1 = v1 + 1.555 WHERE k = 4;
+EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v2 = 1.555 WHERE k = 4;
 EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v2 = v2 + 1.555 WHERE k = 4;
-EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v3 = 1 WHERE k = 4;
-EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v3 = v3 + 1 WHERE k = 4;
 EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v1 = v2 + 1.555 WHERE k = 4;
 EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v2 = k + 1.555 WHERE k = 4;
+
+-- Below statements should all NOT USE single-row.
+EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v3 = 1 WHERE k = 4;
+EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v3 = v3 + 1 WHERE k = 4;
 EXPLAIN (COSTS FALSE) UPDATE single_row_decimal SET v3 = k - v3 WHERE k = 4;
 
 -- Test execution.
@@ -584,20 +584,19 @@ CREATE TABLE single_row_index(k int PRIMARY KEY, v1 smallint, v2 smallint, v3 sm
 
 -- Below statements should all USE single-row.
 EXPLAIN (COSTS FALSE) UPDATE single_row_index SET v1 = 1 WHERE k = 1;
-EXPLAIN (COSTS FALSE) UPDATE single_row_index SET v2 = 2 WHERE k = 1;
-EXPLAIN (COSTS FALSE) UPDATE single_row_index SET v3 = 3 WHERE k = 1;
--- Below statements should all NOT USE single-row.
 EXPLAIN (COSTS FALSE) UPDATE single_row_index SET v1 = v1 + 1 WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row_index SET v2 = 2 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_index SET v2 = v2 + 2 WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row_index SET v3 = 3 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_index SET v3 = v3 + 3 WHERE k = 1;
 
 CREATE INDEX single_row_index_idx on single_row_index(v1) include (v3);
 
 -- Below statements should all USE single-row.
 EXPLAIN (COSTS FALSE) UPDATE single_row_index SET v2 = 2 WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row_index SET v2 = v2 + 2 WHERE k = 1;
 
 -- Below statements should all NOT USE single-row.
-EXPLAIN (COSTS FALSE) UPDATE single_row_index SET v2 = v2 + 2 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_index SET v1 = 1 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_index SET v1 = v1 + 1 WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row_index SET v3 = 3 WHERE k = 1;
@@ -627,8 +626,6 @@ CREATE TABLE single_row_col_order(a int, b int, c int, d int, e int, primary key
 EXPLAIN (COSTS OFF) UPDATE single_row_col_order SET c = 6, a = 2, e = 10 WHERE b = 2 and d = 4;
 EXPLAIN (COSTS OFF) UPDATE single_row_col_order SET c = c * c, a = a * 2, e = power(e, 2) WHERE b = 2 and d = 4;
 EXPLAIN (COSTS OFF) DELETE FROM single_row_col_order WHERE b = 2 and d = 4;
-
--- Below statements should all NOT USE single-row.
 EXPLAIN (COSTS OFF) UPDATE single_row_col_order SET c = 6, a = c + 2, e = 10 WHERE b = 2 and d = 4;
 EXPLAIN (COSTS OFF) UPDATE single_row_col_order SET c = c * b, a = a * 2, e = power(e, 2) WHERE b = 2 and d = 4;
 
