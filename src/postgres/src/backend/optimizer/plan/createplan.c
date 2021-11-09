@@ -2703,15 +2703,36 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 				}
 			}
 
+			/*
+			 * Verify if the path target matches a table column.
+			 *
+			 * While resno is always expected to be greater than zero, it is
+			 * possible that planner adds extra expressions. In particular,
+			 * we've seen a RowExpr when a view was updated.
+			 *
+			 * We are not sure how to handle those, so we fallback to regular
+			 * update.
+			 *
+			 * Note, this check happens after the unspecified/pseudo-column
+			 * check, it is expected that pseudo-columns go after regular
+			 * tables columns listed in the tuple descriptor.
+			 */
+			if (resno <= 0 || resno > tupDesc->natts)
+			{
+				elog(DEBUG1, "Target expression out of range: %d", resno);
+				RelationClose(relation);
+				return false;
+			}
+
 			/* Updates involving primary key columns are not single-row. */
-			if (bms_is_member(tle->resno - attr_offset, primary_key_attrs))
+			if (bms_is_member(resno - attr_offset, primary_key_attrs))
 			{
 				RelationClose(relation);
 				return false;
 			}
 
 			subpath_tlist = lappend(subpath_tlist, tle);
-			update_attrs = bms_add_member(update_attrs, tle->resno - attr_offset);
+			update_attrs = bms_add_member(update_attrs, resno - attr_offset);
 
 			/*
 			 * We can not push down an expression for a column with not null
@@ -2730,12 +2751,12 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 			 *
 			 * Naturally, expression can not be pushed down if there are
 			 * elements not supported by DocDB.
-			 * 
+			 *
 			 * However, if not pushable expression does not refer any target
 			 * table column, the Result node can evaluate it, and the statement
 			 * would still be one row.
 			 */
-			if ((resno > 0 && tupDesc->attrs[resno - 1].attnotnull) ||
+			if (TupleDescAttr(tupDesc, resno - 1)->attnotnull ||
 			    YBIsCollationValidNonC(ybc_get_attcollation(tupDesc, resno)) ||
 				!YbCanPushdownExpr(tle->expr, column_refs))
 			{
@@ -2754,7 +2775,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 			}
 
 			pushdown_update_attrs = bms_add_member(pushdown_update_attrs,
-												   tle->resno - attr_offset);
+												   resno - attr_offset);
 		}
 	}
 
