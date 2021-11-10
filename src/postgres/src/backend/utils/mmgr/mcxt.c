@@ -304,6 +304,7 @@ MemoryContextDelete(MemoryContext context)
 	 */
 	if (context->yb_memctx)
 		HandleYBStatus(YBCPgDestroyMemctx(context->yb_memctx));
+	context->yb_memctx = NULL;
 
 	context->methods->delete_context(context);
 
