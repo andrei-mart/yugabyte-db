@@ -170,7 +170,7 @@ static Datum evalExpr(YbgExprContext ctx, Expr* expr, bool *is_null)
 			fmgr_info(funcid, flinfo);
 			InitFunctionCallInfoData(fcinfo,
 									 flinfo,
-									 args->length,
+									 list_length(args),
 									 inputcollid,
 									 NULL,
 									 NULL);
