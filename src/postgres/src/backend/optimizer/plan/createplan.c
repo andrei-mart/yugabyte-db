@@ -2757,7 +2757,7 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 			 * would still be one row.
 			 */
 			if (TupleDescAttr(tupDesc, resno - 1)->attnotnull ||
-			    YBIsCollationValidNonC(ybc_get_attcollation(tupDesc, resno)) ||
+				YBIsCollationValidNonC(ybc_get_attcollation(tupDesc, resno)) ||
 				!YbCanPushdownExpr(tle->expr, column_refs))
 			{
 				/*
