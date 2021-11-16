@@ -265,6 +265,12 @@ bool yb_pushdown_walker(Node *node, List **params)
 		case T_FuncExpr:
 		{
 			FuncExpr *func_expr = castNode(FuncExpr, node);
+			/* DocDB executor does not expand variadic argument */
+			if (func_expr->funcvariadic)
+			{
+				return true;
+			}
+			/* Check if the function is pushable */
 			if (!yb_can_pushdown_func(func_expr->funcid))
 			{
 				return true;
