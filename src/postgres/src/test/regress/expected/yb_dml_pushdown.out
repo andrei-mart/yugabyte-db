@@ -753,12 +753,13 @@ EXPLAIN (COSTS OFF) UPDATE single_row_function_test SET created_at = '2022-01-01
 
 -- Verify that even if the function used in the WHERE clause is a supported but volatile function, the fast path is still disabled.
 EXPLAIN (COSTS OFF) UPDATE single_row_function_test SET created_at = '2022-01-01 00:00:00'::TIMESTAMP WITH TIME ZONE, random_field = ceil(random())::int  WHERE date_pk = NOW() AND k = random()::int;
-                                QUERY PLAN
---------------------------------------------------------------------------
+                    QUERY PLAN
+--------------------------------------------------
  Update on single_row_function_test
    ->  Seq Scan on single_row_function_test
-         Remote Filter: ((date_pk = now()) AND (k = (random())::integer))
-(3 rows)
+         Filter: (date_pk = now())
+         Remote Filter: (k = (random())::integer)
+(4 rows)
 
 DROP TABLE single_row_function_test;
 -- Test execution.
