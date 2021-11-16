@@ -29,9 +29,7 @@
 
 const uint32 yb_funcs_safe_for_pushdown[] = {
 	F_DRANDOM,
-	F_NOW,
-	F_TIMESTAMPTZ_TIMESTAMP,
-	F_TIMESTAMP_TIMESTAMPTZ
+	F_NOW
 };
 
 const int yb_funcs_safe_for_pushdown_count =
