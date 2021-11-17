@@ -366,14 +366,21 @@ bool yb_transactional_walker(Node *node, void *context)
 		case T_FuncExpr:
 		{
 			/*
-			 * Function may be everything, unless it is immutable
+			 * Built-in functions should be safe. If we learn of functions
+			 * that are unsafe we may need a blacklist here.
+			 * User defined function may be everything, unless it is immutable
 			 * By definition, immutable functions can not access database.
-			 * Otherwise safely assume the function needs distributed transaction.
+			 * Otherwise safely assume that not im,mutable function would needs
+			 * a distributed transaction.
 			 */
 			FuncExpr	   *func_expr = castNode(FuncExpr, node);
 			Oid 			funcid = func_expr->funcid;
 			HeapTuple		tuple;
 			Form_pg_proc	pg_proc;
+			if (is_builtin_func(funcid))
+			{
+				break;
+			}
 			tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
 			if (!HeapTupleIsValid(tuple))
 				elog(ERROR, "cache lookup failed for function %u", funcid);
@@ -406,7 +413,8 @@ bool yb_transactional_walker(Node *node, void *context)
 		case T_TableFunc:
 			return true;
 		/*
-		 * Optimistically assume all other expression types are not transactional.
+		 * Optimistically assume all other expression types do not
+		 * require a distributed transaction.
 		 */
 		default:
 			break;
