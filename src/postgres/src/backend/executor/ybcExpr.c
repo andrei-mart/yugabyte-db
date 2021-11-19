@@ -240,25 +240,29 @@ bool yb_pushdown_walker(Node *node, List **params)
 			if (params)
 			{
 				ListCell   *lc;
-				YbExprParamDesc *param;
+				bool		found = false;
 
 				/* Check if the column reference has already been collected */
 				foreach(lc, *params)
 				{
-					param =	(YbExprParamDesc *) lfirst(lc);
+					YbExprParamDesc *param = (YbExprParamDesc *) lfirst(lc);
 					if (param->attno == attno)
 					{
+						found = true;
 						break;
 					}
 				}
 
-				/* Add new column reference to the list */
-				param =	makeNode(YbExprParamDesc);
-				param->attno = attno;
-				param->typid = var_expr->vartype;
-				param->typmod = var_expr->vartypmod;
-				param->collid = var_expr->varcollid;
-				*params = lappend(*params, param);
+				if (!found)
+				{
+					/* Add new column reference to the list */
+					YbExprParamDesc *new_param = makeNode(YbExprParamDesc);
+					new_param->attno = attno;
+					new_param->typid = var_expr->vartype;
+					new_param->typmod = var_expr->vartypmod;
+					new_param->collid = var_expr->varcollid;
+					*params = lappend(*params, new_param);
+				}
 			}
 			break;
 		}
