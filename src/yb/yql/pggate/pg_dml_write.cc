@@ -173,7 +173,7 @@ PgsqlExpressionPB *PgDmlWrite::AllocTargetPB() {
 }
 
 PgsqlExpressionPB *PgDmlWrite::AllocQualPB() {
-  LOG(FATAL) << "Pure virtual function is being call";
+  LOG(FATAL) << "Pure virtual function is being called";
   return nullptr;
 }
 
