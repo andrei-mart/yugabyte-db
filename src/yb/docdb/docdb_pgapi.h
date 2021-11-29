@@ -24,6 +24,7 @@
 #ifndef YB_DOCDB_DOCDB_PGAPI_H_
 #define YB_DOCDB_DOCDB_PGAPI_H_
 
+#include "yb/common/column_id.h"
 #include "yb/common/common_fwd.h"
 #include "yb/common/common.pb.h"
 

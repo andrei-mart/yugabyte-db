@@ -11,10 +11,12 @@
 // under the License.
 //
 
+#include <list>
+
 #include "yb/docdb/doc_pg_expr.h"
 #include "yb/docdb/docdb_pgapi.h"
-#include "yb/util/bfpg/bfpg.h"
 #include "yb/util/logging.h"
+#include "yb/util/result.h"
 #include "yb/yql/pggate/pg_value.h"
 
 using yb::pggate::PgValueToPB;
