@@ -290,6 +290,19 @@ bool yb_pushdown_walker(Node *node, List **params)
 			}
 			break;
 		}
+		case T_CaseExpr:
+		{
+			CaseExpr *case_expr = castNode(CaseExpr, node);
+			/*
+			 * Support for implicit equality comparison would require catalog
+			 * lookup to find equality operation for the argument data type.
+			 */
+			if (case_expr->arg)
+			{
+				return true;
+			}
+			break;
+		}
 		case T_Param:
 		{
 			Param *p = castNode(Param, node);
@@ -307,7 +320,8 @@ bool yb_pushdown_walker(Node *node, List **params)
 			* Constant value may need to be converted to DocDB format, but
 			* DocDB does not support arbitrary types.
 			*/
-			if (!YBCPgFindTypeEntity((c->consttype))) {
+			if (!YBCPgFindTypeEntity(c->consttype))
+			{
 				return true;
 			}
 			break;
@@ -315,6 +329,7 @@ bool yb_pushdown_walker(Node *node, List **params)
 		case T_RelabelType:
 		case T_NullTest:
 		case T_BoolExpr:
+		case T_CaseWhen:
 			break;
 		default:
 			return true;

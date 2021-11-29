@@ -40,6 +40,8 @@ EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = power(2, 3 - k) WHERE k = 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k = 1 RETURNING v2;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = v1 + 1 WHERE k = 1 RETURNING v1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k = 1 RETURNING *;
+EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = CASE WHEN random() < 0.1 THEN 0 ELSE 1 END WHERE k = 1;
+EXPLAIN (COSTS FALSE) UPDATE single_row SET v2 = CASE WHEN v1 % 2 = 0 THEN v2 * 3 ELSE v2 *2 END WHERE k = 1;
 
 -- Below statements should all NOT USE single-row.
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1;
@@ -48,6 +50,7 @@ EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k > 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k != 1;
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k IN (1, 2);
 EXPLAIN (COSTS FALSE) UPDATE single_row SET v1 = 1 WHERE k % 2 = 0;
+EXPLAIN (COSTS FALSE) UPDATE single_row SET v2 = CASE v1 WHEN 1 THEN v2 * 2 ELSE v2 END WHERE k = 1;
 
 --
 -- Test single-row UPDATE/DELETE execution.
@@ -58,6 +61,9 @@ UPDATE single_row SET v1 = 2 WHERE k = 1;
 SELECT * FROM single_row;
 
 UPDATE single_row SET v1 = v1 * 2 WHERE k = 1;
+SELECT * FROM single_row;
+
+UPDATE single_row SET v2 = CASE WHEN v1 % 2 = 0 THEN v2 * 3 ELSE v2 *2 END WHERE k = 1;
 SELECT * FROM single_row;
 
 DELETE FROM single_row WHERE k = 1;

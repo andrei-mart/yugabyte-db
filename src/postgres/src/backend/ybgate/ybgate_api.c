@@ -262,6 +262,36 @@ static Datum evalExpr(YbgExprContext ctx, Expr* expr, bool *is_null)
 			}
 			return true;
 		}
+		case T_CaseExpr:
+		{
+			CaseExpr   *ce = castNode(CaseExpr, expr);
+			ListCell   *lc;
+			/*
+			 * Support for implicit equality comparison would require catalog
+			 * lookup to find equality operation for the argument data type.
+			 */
+			if (ce->arg)
+				ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR), errmsg(
+					"Unsupported CASE expression received by DocDB")));
+			/*
+			 * Evaluate WHEN clause expressions one by one, if any evaluation
+			 * result is true, evaluate and return respective result expression
+			 */
+			foreach(lc, ce->args)
+			{
+				CaseWhen *cw = castNode(CaseWhen, lfirst(lc));
+				bool arg_is_null;
+				if (evalExpr(ctx, cw->expr, &arg_is_null))
+					return evalExpr(ctx, cw->result, is_null);
+			}
+			/* None of the exprerssions was true, so evaluate the default. */
+			if (ce->defresult)
+				return evalExpr(ctx, ce->defresult, is_null);
+			/* If default is not specified, return NULL */
+			*is_null = true;
+			return (Datum) 0;
+		}
 		case T_Const:
 		{
 			Const* const_expr = castNode(Const, expr);

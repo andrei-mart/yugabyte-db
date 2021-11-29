@@ -142,6 +142,26 @@ SELECT * FROM pushdown_test WHERE i1 = 1 OR NOT isfinite(ts1) AND ts2 > '2001-01
  1 |  1 | value1 | Thu Nov 11 11:11:11 2021 | Thu Nov 11 10:11:11 2021 UTC | empty | {1,NULL,42}
 (1 row)
 
+-- Case expression
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE CASE WHEN i1 % 2 = 0 THEN ts1 < '2021-11-12' WHEN i1 % 2 = 1 THEN ts2 > '2022-01-01 00:00:00-7' END;
+                                                                                                           QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Seq Scan on pushdown_test
+   Remote Filter: CASE WHEN ((i1 % 2) = 0) THEN (ts1 < 'Fri Nov 12 00:00:00 2021'::timestamp without time zone) WHEN ((i1 % 2) = 1) THEN (ts2 > 'Sat Jan 01 07:00:00 2022 UTC'::timestamp with time zone) ELSE NULL::boolean END
+(2 rows)
+
+EXPLAIN (COSTS FALSE) SELECT * FROM pushdown_test WHERE CASE i1 % 2 WHEN 0 THEN ts1 < '2021-11-12' WHEN 1 THEN ts2 > '2022-01-01 00:00:00-7' END;
+                                                                                               QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Seq Scan on pushdown_test
+   Filter: CASE (i1 % 2) WHEN 0 THEN (ts1 < 'Fri Nov 12 00:00:00 2021'::timestamp without time zone) WHEN 1 THEN (ts2 > 'Sat Jan 01 07:00:00 2022 UTC'::timestamp with time zone) ELSE NULL::boolean END
+(2 rows)
+
+SELECT * FROM pushdown_test WHERE CASE WHEN i1 % 2 = 0 THEN ts1 < '2021-11-12' WHEN i1 % 2 = 1 THEN ts2 > '2022-01-01 00:00:00-7' END;
+ k | i1 | t1 | ts1 | ts2 | r1 | a1
+---+----+----+-----+-----+----+----
+(0 rows)
+
 -- Aggregates
 EXPLAIN (COSTS FALSE) SELECT count(*) FROM pushdown_test;
            QUERY PLAN
