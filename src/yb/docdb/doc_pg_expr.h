@@ -15,6 +15,7 @@
 #define YB_DOCDB_DOC_PG_EXPR_H_
 
 #include "yb/common/ql_expr.h"
+#include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/schema.h"
 #include "yb/util/status.h"
 
