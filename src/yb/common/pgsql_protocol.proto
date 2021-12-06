@@ -456,13 +456,13 @@ message PgsqlReadRequestPB {
   // Pushed down Postgres conditions. Like in Postgres, conditions are implicitly ANDed.
   // Per scanned row, expressions are evaluated by PGgate one by one, and if any is evaluated to
   // false the row is skipped.
-  repeated PgsqlExpressionPB where_clauses = 32;
+  repeated PgsqlExpressionPB where_clauses = 33;
 
   // Columns refereced by this write operation.
   // Provides mapping between DocDB and Postgres identifiers, and provides Postgres type information
   // to convert between DocDB and Postgres formats.
   // One entry per column referenced.
-  repeated PgsqlColRefPB col_refs = 33;
+  repeated PgsqlColRefPB col_refs = 34;
 }
 
 //--------------------------------------------------------------------------------------------------
